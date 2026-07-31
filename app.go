@@ -129,12 +129,11 @@ type User struct {
 	CreatedAt      time.Time          `bson:"created_at" json:"created_at"`
 	TotalPurchases int                `bson:"total_purchases" json:"total_purchases"`
 	ExpiryDate     *time.Time         `bson:"expiryDate,omitempty" json:"expiryDate,omitempty"`
-	// --- NEW FIELDS (backward compatible: omitempty + default) ---
-	Banned     bool      `bson:"banned,omitempty" json:"banned,omitempty"`
-	BannedAt   *time.Time `bson:"banned_at,omitempty" json:"banned_at,omitempty"`
-	BannedBy   string    `bson:"banned_by,omitempty" json:"banned_by,omitempty"`
-	BanReason  string    `bson:"ban_reason,omitempty" json:"ban_reason,omitempty"`
-	Coins      int64     `bson:"coins,omitempty" json:"coins,omitempty"`
+	Banned         bool               `bson:"banned,omitempty" json:"banned,omitempty"`
+	BannedAt       *time.Time         `bson:"banned_at,omitempty" json:"banned_at,omitempty"`
+	BannedBy       string             `bson:"banned_by,omitempty" json:"banned_by,omitempty"`
+	BanReason      string             `bson:"ban_reason,omitempty" json:"ban_reason,omitempty"`
+	Coins          int64              `bson:"coins,omitempty" json:"coins,omitempty"`
 }
 
 type Coupon struct {
@@ -156,7 +155,7 @@ type Transaction struct {
 	Days         int                `bson:"days" json:"days"`
 	Amount       int64              `bson:"amount,omitempty" json:"amount,omitempty"`
 	PlanName     string             `bson:"plan_name,omitempty" json:"plan_name,omitempty"`
-	Type         string             `bson:"type" json:"type"` // "subscription", "coin_purchase", "donation"
+	Type         string             `bson:"type" json:"type"`
 	Status       string             `bson:"status" json:"status"`
 	CreatedAt    time.Time          `bson:"created_at" json:"created_at"`
 	ProcessedAt  *time.Time         `bson:"processed_at,omitempty" json:"processed_at,omitempty"`
@@ -167,34 +166,30 @@ type Transaction struct {
 }
 
 type PaymentOrder struct {
-	ID        primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	UserID    primitive.ObjectID `bson:"user_id" json:"user_id"`
-	Plan      string             `bson:"plan" json:"plan"`
-	Amount    int64              `bson:"amount" json:"amount"`
-	Status    string             `bson:"status" json:"status"`
-	TrackID   string             `bson:"track_id,omitempty" json:"track_id,omitempty"`
-	CreatedAt time.Time          `bson:"created_at" json:"created_at"`
-	PaidAt    *time.Time         `bson:"paid_at,omitempty" json:"paid_at,omitempty"`
-	// --- NEW ---
-	Type      string `bson:"type,omitempty" json:"type,omitempty"` // "subscription", "coins"
-	CoinAmount int64  `bson:"coin_amount,omitempty" json:"coin_amount,omitempty"`
+	ID         primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	UserID     primitive.ObjectID `bson:"user_id" json:"user_id"`
+	Plan       string             `bson:"plan" json:"plan"`
+	Amount     int64              `bson:"amount" json:"amount"`
+	Status     string             `bson:"status" json:"status"`
+	TrackID    string             `bson:"track_id,omitempty" json:"track_id,omitempty"`
+	CreatedAt  time.Time          `bson:"created_at" json:"created_at"`
+	PaidAt     *time.Time         `bson:"paid_at,omitempty" json:"paid_at,omitempty"`
+	Type       string             `bson:"type,omitempty" json:"type,omitempty"`
+	CoinAmount int64              `bson:"coin_amount,omitempty" json:"coin_amount,omitempty"`
 }
 
-// Plan - moved to DB for dynamic management
 type Plan struct {
-	ID          primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	Name        string             `bson:"name" json:"name"`
-	DisplayName string             `bson:"display_name" json:"display_name"`
-	Days        int                `bson:"days" json:"days"`
-	Amount      int64              `bson:"amount" json:"amount"` // ریال
-	Active      bool               `bson:"active" json:"active"`
-	SortOrder   int                `bson:"sort_order" json:"sort_order"`
-	CreatedAt   time.Time          `bson:"created_at" json:"created_at"`
-	UpdatedAt   time.Time          `bson:"updated_at" json:"updated_at"`
-	// Discount
-	DiscountPercent int        `bson:"discount_percent,omitempty" json:"discount_percent,omitempty"`
-	DiscountUntil   *time.Time `bson:"discount_until,omitempty" json:"discount_until,omitempty"`
-	// Quantity discount: e.g. buy 3+ get 10% off
+	ID                primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	Name              string             `bson:"name" json:"name"`
+	DisplayName       string             `bson:"display_name" json:"display_name"`
+	Days              int                `bson:"days" json:"days"`
+	Amount            int64              `bson:"amount" json:"amount"`
+	Active            bool               `bson:"active" json:"active"`
+	SortOrder         int                `bson:"sort_order" json:"sort_order"`
+	CreatedAt         time.Time          `bson:"created_at" json:"created_at"`
+	UpdatedAt         time.Time          `bson:"updated_at" json:"updated_at"`
+	DiscountPercent   int                `bson:"discount_percent,omitempty" json:"discount_percent,omitempty"`
+	DiscountUntil     *time.Time         `bson:"discount_until,omitempty" json:"discount_until,omitempty"`
 	QuantityDiscounts []QuantityDiscount `bson:"quantity_discounts,omitempty" json:"quantity_discounts,omitempty"`
 }
 
@@ -203,18 +198,17 @@ type QuantityDiscount struct {
 	DiscountPercent int `bson:"discount_percent" json:"discount_percent"`
 }
 
-// CoinPackage - for coin purchases
 type CoinPackage struct {
 	ID        primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	Name      string             `bson:"name" json:"name"`
 	Coins     int64              `bson:"coins" json:"coins"`
-	Amount    int64              `bson:"amount" json:"amount"` // ریال
+	Amount    int64              `bson:"amount" json:"amount"`
 	Active    bool               `bson:"active" json:"active"`
 	CreatedAt time.Time          `bson:"created_at" json:"created_at"`
 }
 
-// ==================== LEGACY PLANS (fallback) ====================
-// These are used ONLY if DB plans collection is empty (backward compat)
+// ==================== LEGACY PLANS ====================
+
 var LegacyPlans = map[string]struct {
 	Days   int
 	Amount int64
@@ -229,7 +223,6 @@ func getPlanByName(ctx context.Context, name string) (*Plan, error) {
 	var plan Plan
 	err := db.Collection("plans").FindOne(ctx, bson.M{"name": name, "active": true}).Decode(&plan)
 	if err == mongo.ErrNoDocuments {
-		// Fallback to legacy hardcoded plans
 		if lp, ok := LegacyPlans[name]; ok {
 			return &Plan{
 				Name:   name,
@@ -246,8 +239,6 @@ func getPlanByName(ctx context.Context, name string) (*Plan, error) {
 func getEffectiveAmount(plan *Plan) int64 {
 	amount := plan.Amount
 	now := time.Now().UTC()
-
-	// Apply time-based discount
 	if plan.DiscountPercent > 0 && plan.DiscountUntil != nil && plan.DiscountUntil.After(now) {
 		amount = amount * int64(100-plan.DiscountPercent) / 100
 	}
@@ -259,8 +250,8 @@ func getEffectiveAmount(plan *Plan) int64 {
 type RateLimiter struct {
 	mu       sync.Mutex
 	buckets  map[string]*tokenBucket
-	rate     float64 // tokens per second
-	capacity float64 // max burst
+	rate     float64
+	capacity float64
 }
 
 type tokenBucket struct {
@@ -301,7 +292,6 @@ func (rl *RateLimiter) Allow(key string) bool {
 	return true
 }
 
-// Cleanup old entries periodically
 func (rl *RateLimiter) Cleanup(interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	go func() {
@@ -324,17 +314,11 @@ func (rl *RateLimiter) Cleanup(interval time.Duration) {
 	}()
 }
 
-// Rate limiters with different configs
 var (
-	// /auth/me - very generous: 150/min per user, burst 200
-	rlAuthMe = NewRateLimiter(150, 200)
-	// /auth/login, /auth/register - strict: 10/min per IP, burst 15
-	rlAuth = NewRateLimiter(10, 15)
-	// General authenticated endpoints: 60/min per user
+	rlAuthMe  = NewRateLimiter(150, 200)
+	rlAuth    = NewRateLimiter(10, 15)
 	rlGeneral = NewRateLimiter(60, 80)
-	// Admin endpoints: 120/min per admin
-	rlAdmin = NewRateLimiter(120, 150)
-	// Payment creation: 10/min per user
+	rlAdmin   = NewRateLimiter(120, 150)
 	rlPayment = NewRateLimiter(10, 15)
 )
 
@@ -407,7 +391,6 @@ func interfaceToInt64(v interface{}) (int64, bool) {
 }
 
 func getClientIP(c *gin.Context) string {
-	// Check X-Forwarded-For first (behind proxy)
 	if xff := c.GetHeader("X-Forwarded-For"); xff != "" {
 		parts := strings.Split(xff, ",")
 		return strings.TrimSpace(parts[0])
@@ -563,7 +546,6 @@ func logicApplyPayment(userIDStr string, couponCode, txHash string, daysReq int)
 		return map[string]string{"msg": "User not found"}, 404, err
 	}
 
-	// Check if user is banned
 	if user.Banned {
 		return map[string]string{"msg": "Account is suspended"}, 403, nil
 	}
@@ -744,12 +726,11 @@ func AuthMiddleware(requiredAdmin bool) gin.HandlerFunc {
 			return
 		}
 
-		// Check ban status
 		if user.Banned {
 			c.AbortWithStatusJSON(403, gin.H{
-				"msg":        "Account suspended",
-				"reason":     user.BanReason,
-				"banned_at":  user.BannedAt,
+				"msg":       "Account suspended",
+				"reason":    user.BanReason,
+				"banned_at": user.BannedAt,
 			})
 			return
 		}
@@ -797,7 +778,6 @@ func register(c *gin.Context) {
 		c.JSON(400, gin.H{"msg": "Username too long (max 32)"})
 		return
 	}
-	// Validate username characters
 	for _, ch := range username {
 		if !((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '_') {
 			c.JSON(400, gin.H{"msg": "Username can only contain lowercase letters, numbers, and underscores"})
@@ -860,7 +840,6 @@ func login(c *gin.Context) {
 		Username string `json:"username" binding:"required"`
 		Password string `json:"password" binding:"required"`
 	}
-	// BUG FIX: properly handle bind error
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(400, gin.H{"msg": "Invalid request body"})
 		return
@@ -882,7 +861,6 @@ func login(c *gin.Context) {
 		return
 	}
 
-	// Check ban
 	if user.Banned {
 		c.JSON(403, gin.H{
 			"msg":       "Account suspended",
@@ -899,7 +877,6 @@ func login(c *gin.Context) {
 	c.JSON(200, gin.H{"access_token": at, "refresh_token": rt})
 }
 
-// BUG FIX: getMe no longer goes through worker queue - direct DB read for performance
 func getMe(c *gin.Context) {
 	uVal, exists := c.Get("user")
 	if !exists {
@@ -1014,8 +991,6 @@ func getUserTransactions(c *gin.Context) {
 	defer cancel()
 
 	filter := bson.M{"user_id": user.ID}
-
-	// Optional status filter
 	if status := c.Query("status"); status != "" {
 		filter["status"] = status
 	}
@@ -1202,15 +1177,19 @@ func adminApproveTx(c *gin.Context) {
 			"$set": bson.M{"expiryDate": newExp},
 			"$inc": bson.M{"total_purchases": 1},
 		})
+		if err != nil {
+			return map[string]string{"msg": "Failed to update user"}, 500, err
+		}
 
-		if err == nil {
-			db.Collection("transactions").UpdateOne(ctx, bson.M{"_id": oid}, bson.M{
-				"$set": bson.M{
-					"status":       "approved",
-					"approved_by":  admin.Username,
-					"processed_at": now,
-				},
-			})
+		_, err = db.Collection("transactions").UpdateOne(ctx, bson.M{"_id": oid}, bson.M{
+			"$set": bson.M{
+				"status":       "approved",
+				"approved_by":  admin.Username,
+				"processed_at": now,
+			},
+		})
+		if err != nil {
+			return map[string]string{"msg": "Failed to update transaction"}, 500, err
 		}
 
 		return map[string]string{"msg": "Approved", "new_expiry": newExp.Format(time.RFC3339)}, 200, nil
@@ -1225,7 +1204,6 @@ func adminRejectTx(c *gin.Context) {
 	uVal, _ := c.Get("user")
 	admin := uVal.(User)
 
-	// BUG FIX: proper struct definition
 	var body struct {
 		Reason string `json:"reason"`
 	}
@@ -1277,7 +1255,6 @@ func manageCoupons(c *gin.Context) {
 		defer cursor.Close(ctx)
 
 		var coupons []Coupon
-		// BUG FIX: check cursor.All error
 		if err := cursor.All(ctx, &coupons); err != nil {
 			c.JSON(500, gin.H{"msg": "Read error"})
 			return
@@ -1360,7 +1337,6 @@ func adminSearchUsers(c *gin.Context) {
 
 	filter := bson.M{}
 	if query != "" {
-		// Search by username (regex) or by ObjectID
 		if oid, err := primitive.ObjectIDFromHex(query); err == nil {
 			filter["_id"] = oid
 		} else {
@@ -1368,7 +1344,6 @@ func adminSearchUsers(c *gin.Context) {
 		}
 	}
 
-	// Optional filters
 	if status := c.Query("status"); status != "" {
 		switch status {
 		case "active":
@@ -1469,7 +1444,6 @@ func adminBanUser(c *gin.Context) {
 		return
 	}
 
-	// Don't allow banning yourself
 	if oid == admin.ID {
 		c.JSON(400, gin.H{"msg": "Cannot ban yourself"})
 		return
@@ -1490,7 +1464,6 @@ func adminBanUser(c *gin.Context) {
 		return
 	}
 	if res.MatchedCount == 0 {
-		// Check if user exists
 		count, _ := db.Collection("users").CountDocuments(ctx, bson.M{"_id": oid})
 		if count == 0 {
 			c.JSON(404, gin.H{"msg": "User not found"})
@@ -1500,7 +1473,6 @@ func adminBanUser(c *gin.Context) {
 		return
 	}
 
-	// Invalidate session by changing salt
 	db.Collection("users").UpdateOne(ctx, bson.M{"_id": oid}, bson.M{
 		"$set": bson.M{"session_salt": "banned_" + strconv.FormatInt(now.UnixNano(), 10)},
 	})
@@ -1567,7 +1539,6 @@ func adminPurchaseReport(c *gin.Context) {
 	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
 
-	// Total sales (approved transactions)
 	totalSales, _ := db.Collection("transactions").CountDocuments(ctx, bson.M{"status": "approved"})
 
 	var totalRevenue int64
@@ -1575,23 +1546,23 @@ func adminPurchaseReport(c *gin.Context) {
 		{{Key: "$match", Value: bson.M{"status": "approved"}}},
 		{{Key: "$group", Value: bson.M{"_id": nil, "total": bson.M{"$sum": "$amount"}}}},
 	})
-	if revAggErr == nil && revAggCur.Next(ctx) {
-		var revResult struct {
-			Total int64 `bson:"total"`
+	if revAggErr == nil {
+		if revAggCur.Next(ctx) {
+			var revResult struct {
+				Total int64 `bson:"total"`
+			}
+			revAggCur.Decode(&revResult)
+			totalRevenue = revResult.Total
 		}
-		revAggCur.Decode(&revResult)
-		totalRevenue = revResult.Total
 		revAggCur.Close(ctx)
 	}
 
-	// New purchases this month (first-time buyers)
 	newThisMonth, _ := db.Collection("transactions").CountDocuments(ctx, bson.M{
 		"status":       "approved",
 		"processed_at": bson.M{"$gte": monthStart},
 	})
 
-	// Renewals this month (users who had previous purchases)
-	// Approximation: approved txs this month by users with total_purchases > 1
+	var renewalCount int64
 	renewalPipeline := mongo.Pipeline{
 		{{Key: "$match", Value: bson.M{
 			"status":       "approved",
@@ -1607,54 +1578,53 @@ func adminPurchaseReport(c *gin.Context) {
 		{{Key: "$match", Value: bson.M{"user_info.total_purchases": bson.M{"$gt": 1}}}},
 		{{Key: "$count", Value: "count"}},
 	}
-	renewalResult := struct {
-		Count int64 `bson:"count"`
-	}{}
-	cur, err := db.Collection("transactions").Aggregate(ctx, renewalPipeline)
-	if err == nil && cur.Next(ctx) {
-		cur.Decode(&renewalResult)
+	renewalCur, renewalErr := db.Collection("transactions").Aggregate(ctx, renewalPipeline)
+	if renewalErr == nil {
+		if renewalCur.Next(ctx) {
+			var renewalResult struct {
+				Count int64 `bson:"count"`
+			}
+			renewalCur.Decode(&renewalResult)
+			renewalCount = renewalResult.Count
+		}
+		renewalCur.Close(ctx)
 	}
-	cur.Close(ctx)
 
-	// Today's stats
 	todaySales, _ := db.Collection("transactions").CountDocuments(ctx, bson.M{
 		"status":       "approved",
 		"processed_at": bson.M{"$gte": todayStart},
 	})
 
-	// Pending count
 	pendingCount, _ := db.Collection("transactions").CountDocuments(ctx, bson.M{"status": "pending"})
 
-	// Active subscribers
 	activeSubs, _ := db.Collection("users").CountDocuments(ctx, bson.M{
 		"expiryDate": bson.M{"$gt": now},
 		"banned":     bson.M{"$ne": true},
 	})
 
-	// Total users
 	totalUsers, _ := db.Collection("users").CountDocuments(ctx, bson.M{})
 
-	// Payment orders stats
 	paidOrders, _ := db.Collection("payment_orders").CountDocuments(ctx, bson.M{"status": "paid"})
 	paidThisMonth, _ := db.Collection("payment_orders").CountDocuments(ctx, bson.M{
 		"status":  "paid",
 		"paid_at": bson.M{"$gte": monthStart},
 	})
 
-	// Revenue from payment_orders this month
 	var monthlyRevenue int64
-	revCur, err := db.Collection("payment_orders").Aggregate(ctx, mongo.Pipeline{
+	monthRevCur, monthRevErr := db.Collection("payment_orders").Aggregate(ctx, mongo.Pipeline{
 		{{Key: "$match", Value: bson.M{"status": "paid", "paid_at": bson.M{"$gte": monthStart}}}},
 		{{Key: "$group", Value: bson.M{"_id": nil, "total": bson.M{"$sum": "$amount"}}}},
 	})
-	if err == nil && revCur.Next(ctx) {
-		var res struct {
-			Total int64 `bson:"total"`
+	if monthRevErr == nil {
+		if monthRevCur.Next(ctx) {
+			var res struct {
+				Total int64 `bson:"total"`
+			}
+			monthRevCur.Decode(&res)
+			monthlyRevenue = res.Total
 		}
-		revCur.Decode(&res)
-		monthlyRevenue = res.Total
+		monthRevCur.Close(ctx)
 	}
-	revCur.Close(ctx)
 
 	c.JSON(200, gin.H{
 		"overview": gin.H{
@@ -1666,10 +1636,10 @@ func adminPurchaseReport(c *gin.Context) {
 			"paid_payment_orders":  paidOrders,
 		},
 		"this_month": gin.H{
-			"new_purchases":    newThisMonth,
-			"renewals":         renewalResult.Count,
-			"payment_orders":   paidThisMonth,
-			"revenue_rial":     monthlyRevenue,
+			"new_purchases":  newThisMonth,
+			"renewals":       renewalCount,
+			"payment_orders": paidThisMonth,
+			"revenue_rial":   monthlyRevenue,
 		},
 		"today": gin.H{
 			"approved_transactions": todaySales,
@@ -1698,7 +1668,6 @@ func adminListPlans(c *gin.Context) {
 		return
 	}
 
-	// If no plans in DB, return legacy plans
 	if len(plans) == 0 {
 		legacy := make([]gin.H, 0)
 		for name, p := range LegacyPlans {
@@ -1728,7 +1697,6 @@ func adminListPlans(c *gin.Context) {
 			"created_at":   p.CreatedAt.Format(time.RFC3339),
 			"updated_at":   p.UpdatedAt.Format(time.RFC3339),
 		}
-		// Effective price with discount
 		effAmount := getEffectiveAmount(&p)
 		if effAmount != p.Amount {
 			item["effective_amount"] = effAmount
@@ -1802,7 +1770,6 @@ func adminCreatePlan(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// Check duplicate name
 	count, _ := db.Collection("plans").CountDocuments(ctx, bson.M{"name": name})
 	if count > 0 {
 		c.JSON(409, gin.H{"msg": "Plan name already exists"})
@@ -1815,7 +1782,9 @@ func adminCreatePlan(c *gin.Context) {
 		return
 	}
 
-	plan.ID = res.InsertedID.(primitive.ObjectID)
+	if oid, ok := res.InsertedID.(primitive.ObjectID); ok {
+		plan.ID = oid
+	}
 	c.JSON(201, gin.H{"msg": "Plan created", "plan": plan})
 }
 
@@ -1842,8 +1811,7 @@ func adminUpdatePlan(c *gin.Context) {
 		return
 	}
 
-	update := bson.M{"$set": bson.M{"updated_at": time.Now().UTC()}}
-	setFields := update["$set"].(bson.M)
+	setFields := bson.M{"updated_at": time.Now().UTC()}
 
 	if body.DisplayName != nil {
 		setFields["display_name"] = *body.DisplayName
@@ -1881,7 +1849,7 @@ func adminUpdatePlan(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	res, err := db.Collection("plans").UpdateOne(ctx, bson.M{"_id": oid}, update)
+	res, err := db.Collection("plans").UpdateOne(ctx, bson.M{"_id": oid}, bson.M{"$set": setFields})
 	if err != nil {
 		c.JSON(500, gin.H{"msg": "DB error"})
 		return
@@ -1905,7 +1873,6 @@ func adminDeletePlan(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// Soft delete: just deactivate
 	res, err := db.Collection("plans").UpdateOne(ctx, bson.M{"_id": oid}, bson.M{
 		"$set": bson.M{"active": false, "updated_at": time.Now().UTC()},
 	})
@@ -1935,7 +1902,13 @@ func adminListCoinPackages(c *gin.Context) {
 	defer cursor.Close(ctx)
 
 	var packages []CoinPackage
-	cursor.All(ctx, &packages)
+	if err := cursor.All(ctx, &packages); err != nil {
+		c.JSON(500, gin.H{"msg": "Read error"})
+		return
+	}
+	if packages == nil {
+		packages = []CoinPackage{}
+	}
 
 	c.JSON(200, gin.H{"packages": packages})
 }
@@ -1982,11 +1955,12 @@ func adminCreateCoinPackage(c *gin.Context) {
 		c.JSON(500, gin.H{"msg": "Failed to create package"})
 		return
 	}
-	pkg.ID = res.InsertedID.(primitive.ObjectID)
+	if oid, ok := res.InsertedID.(primitive.ObjectID); ok {
+		pkg.ID = oid
+	}
 	c.JSON(201, gin.H{"msg": "Coin package created", "package": pkg})
 }
 
-// User buys coins
 func buyCoins(c *gin.Context) {
 	uVal, _ := c.Get("user")
 	user := uVal.(User)
@@ -2021,7 +1995,6 @@ func buyCoins(c *gin.Context) {
 		return
 	}
 
-	// Create payment order for coins
 	order := PaymentOrder{
 		UserID:     user.ID,
 		Plan:       "coins_" + pkg.Name,
@@ -2037,7 +2010,11 @@ func buyCoins(c *gin.Context) {
 		c.JSON(500, gin.H{"msg": "DB error"})
 		return
 	}
-	oid := res.InsertedID.(primitive.ObjectID)
+	oid, ok := res.InsertedID.(primitive.ObjectID)
+	if !ok {
+		c.JSON(500, gin.H{"msg": "DB error"})
+		return
+	}
 
 	payload := map[string]interface{}{
 		"merchant":    merchant,
@@ -2093,7 +2070,6 @@ func buyCoins(c *gin.Context) {
 	})
 }
 
-// Get user's coin balance and history
 func getCoinBalance(c *gin.Context) {
 	uVal, _ := c.Get("user")
 	user := uVal.(User)
@@ -2102,9 +2078,11 @@ func getCoinBalance(c *gin.Context) {
 	defer cancel()
 
 	var freshUser User
-	db.Collection("users").FindOne(ctx, bson.M{"_id": user.ID}).Decode(&freshUser)
+	if err := db.Collection("users").FindOne(ctx, bson.M{"_id": user.ID}).Decode(&freshUser); err != nil {
+		c.JSON(404, gin.H{"msg": "User not found"})
+		return
+	}
 
-	// Get coin transactions
 	cursor, err := db.Collection("transactions").Find(ctx,
 		bson.M{"user_id": user.ID, "type": "coin_purchase"},
 		options.Find().SetSort(bson.M{"created_at": -1}).SetLimit(20),
@@ -2116,7 +2094,10 @@ func getCoinBalance(c *gin.Context) {
 	defer cursor.Close(ctx)
 
 	var txs []Transaction
-	cursor.All(ctx, &txs)
+	if err := cursor.All(ctx, &txs); err != nil {
+		c.JSON(200, gin.H{"coins": freshUser.Coins, "history": []gin.H{}})
+		return
+	}
 
 	history := make([]gin.H, 0, len(txs))
 	for _, tx := range txs {
@@ -2224,7 +2205,6 @@ func createPayment(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 
-	// Get plan from DB (with legacy fallback)
 	plan, err := getPlanByName(ctx, body.Plan)
 	if err != nil {
 		c.JSON(400, gin.H{"msg": "Invalid plan", "detail": err.Error()})
@@ -2368,7 +2348,6 @@ func paymentCallback(c *gin.Context) {
 		return
 	}
 
-	// Idempotency: if already paid, return success without re-processing
 	if order.Status == "paid" {
 		c.JSON(200, gin.H{"msg": "Already processed", "status": "paid"})
 		return
@@ -2392,7 +2371,6 @@ func paymentCallback(c *gin.Context) {
 
 	now := time.Now().UTC()
 
-	// Handle coin purchases
 	if order.Type == "coins" && order.CoinAmount > 0 {
 		_, err = db.Collection("users").UpdateOne(ctx, bson.M{"_id": user.ID}, bson.M{
 			"$inc": bson.M{"coins": order.CoinAmount},
@@ -2403,7 +2381,7 @@ func paymentCallback(c *gin.Context) {
 			return
 		}
 
-		// Record transaction
+		processedAt := now
 		db.Collection("transactions").InsertOne(ctx, Transaction{
 			UserID:      user.ID,
 			Username:    user.Username,
@@ -2412,7 +2390,7 @@ func paymentCallback(c *gin.Context) {
 			Amount:      order.Amount,
 			Status:      "approved",
 			CreatedAt:   now,
-			ProcessedAt: &now,
+			ProcessedAt: &processedAt,
 			ApprovedBy:  "system",
 		})
 
@@ -2427,7 +2405,6 @@ func paymentCallback(c *gin.Context) {
 		return
 	}
 
-	// Handle subscription
 	start := now
 	if user.ExpiryDate != nil && user.ExpiryDate.After(now) {
 		start = *user.ExpiryDate
@@ -2435,7 +2412,6 @@ func paymentCallback(c *gin.Context) {
 
 	plan, err := getPlanByName(ctx, order.Plan)
 	if err != nil {
-		// Fallback
 		plan = &Plan{Days: 30, Amount: order.Amount}
 	}
 
@@ -2451,7 +2427,7 @@ func paymentCallback(c *gin.Context) {
 		return
 	}
 
-	// Record transaction
+	processedAt := now
 	db.Collection("transactions").InsertOne(ctx, Transaction{
 		UserID:      user.ID,
 		Username:    user.Username,
@@ -2462,7 +2438,7 @@ func paymentCallback(c *gin.Context) {
 		Type:        "subscription",
 		Status:      "approved",
 		CreatedAt:   now,
-		ProcessedAt: &now,
+		ProcessedAt: &processedAt,
 		ApprovedBy:  "system",
 	})
 
@@ -2512,6 +2488,10 @@ func reconcilePendingPayments(interval time.Duration, minAge time.Duration) {
 			cur.Close(ctx)
 
 			for _, order := range orders {
+				if order.TrackID == "" {
+					continue
+				}
+
 				payload := map[string]interface{}{
 					"merchant": os.Getenv("ZIBAL_MERCHANT"),
 					"trackId":  order.TrackID,
@@ -2528,14 +2508,11 @@ func reconcilePendingPayments(interval time.Duration, minAge time.Duration) {
 					continue
 				}
 
-				// BUG FIX: Use atomic update to prevent duplicate processing
-				// Only process if still pending (atomic check-and-set)
 				res, err := db.Collection("payment_orders").UpdateOne(context.Background(),
 					bson.M{"_id": order.ID, "status": "pending"},
 					bson.M{"$set": bson.M{"status": "paid", "paid_at": time.Now().UTC(), "zibal_verify": resp}},
 				)
 				if err != nil || res.MatchedCount == 0 {
-					// Already processed by callback or another reconcile cycle
 					continue
 				}
 
@@ -2549,6 +2526,7 @@ func reconcilePendingPayments(interval time.Duration, minAge time.Duration) {
 					db.Collection("users").UpdateOne(context.Background(), bson.M{"_id": user.ID}, bson.M{
 						"$inc": bson.M{"coins": order.CoinAmount},
 					})
+					processedAt := time.Now().UTC()
 					db.Collection("transactions").InsertOne(context.Background(), Transaction{
 						UserID:      user.ID,
 						Username:    user.Username,
@@ -2557,7 +2535,7 @@ func reconcilePendingPayments(interval time.Duration, minAge time.Duration) {
 						Amount:      order.Amount,
 						Status:      "approved",
 						CreatedAt:   time.Now().UTC(),
-						ProcessedAt: func() *time.Time { t := time.Now().UTC(); return &t }(),
+						ProcessedAt: &processedAt,
 						ApprovedBy:  "reconcile",
 					})
 					log.Printf("reconcile: coins added for order %s", order.ID.Hex())
@@ -2583,6 +2561,7 @@ func reconcilePendingPayments(interval time.Duration, minAge time.Duration) {
 					continue
 				}
 
+				processedAt := time.Now().UTC()
 				db.Collection("transactions").InsertOne(context.Background(), Transaction{
 					UserID:      user.ID,
 					Username:    user.Username,
@@ -2593,7 +2572,7 @@ func reconcilePendingPayments(interval time.Duration, minAge time.Duration) {
 					Type:        "subscription",
 					Status:      "approved",
 					CreatedAt:   time.Now().UTC(),
-					ProcessedAt: func() *time.Time { t := time.Now().UTC(); return &t }(),
+					ProcessedAt: &processedAt,
 					ApprovedBy:  "reconcile",
 				})
 
@@ -2615,7 +2594,6 @@ func ensureIndexesAndAdmin() {
 		return
 	}
 
-	// Users indexes
 	db.Collection("users").Indexes().CreateOne(ctx, mongo.IndexModel{
 		Keys:    bson.D{{Key: "username", Value: 1}},
 		Options: options.Index().SetUnique(true),
@@ -2627,7 +2605,6 @@ func ensureIndexesAndAdmin() {
 		Keys: bson.D{{Key: "expiryDate", Value: 1}},
 	})
 
-	// Transactions indexes
 	db.Collection("transactions").Indexes().CreateOne(ctx, mongo.IndexModel{
 		Keys:    bson.D{{Key: "tx_hash", Value: 1}},
 		Options: options.Index().SetUnique(true).SetSparse(true),
@@ -2642,13 +2619,11 @@ func ensureIndexesAndAdmin() {
 		Keys: bson.D{{Key: "type", Value: 1}},
 	})
 
-	// Coupons
 	db.Collection("coupons").Indexes().CreateOne(ctx, mongo.IndexModel{
 		Keys:    bson.D{{Key: "code", Value: 1}},
 		Options: options.Index().SetUnique(true),
 	})
 
-	// Payment orders
 	db.Collection("payment_orders").Indexes().CreateOne(ctx, mongo.IndexModel{
 		Keys:    bson.D{{Key: "track_id", Value: 1}},
 		Options: options.Index().SetUnique(true).SetSparse(true),
@@ -2660,18 +2635,15 @@ func ensureIndexesAndAdmin() {
 		Keys: bson.D{{Key: "user_id", Value: 1}},
 	})
 
-	// Plans
 	db.Collection("plans").Indexes().CreateOne(ctx, mongo.IndexModel{
 		Keys:    bson.D{{Key: "name", Value: 1}},
 		Options: options.Index().SetUnique(true),
 	})
 
-	// Coin packages
 	db.Collection("coin_packages").Indexes().CreateOne(ctx, mongo.IndexModel{
 		Keys: bson.D{{Key: "active", Value: 1}},
 	})
 
-	// BUG FIX: properly handle FindOne errors
 	if cfg.AdminEnvUser != "" && cfg.AdminEnvPass != "" {
 		hash, _ := hashPassword(cfg.AdminEnvPass)
 		userColl := db.Collection("users")
@@ -2691,7 +2663,6 @@ func ensureIndexesAndAdmin() {
 		}
 	}
 
-	// Seed default plans if collection is empty
 	count, _ := db.Collection("plans").CountDocuments(ctx, bson.M{})
 	if count == 0 {
 		log.Println("Seeding default plans...")
@@ -2743,14 +2714,12 @@ func main() {
 	heap.Init(&jobQueue)
 	startWorkers(cfg.WorkerCount)
 
-	// Start rate limiter cleanup
 	rlAuthMe.Cleanup(10 * time.Minute)
 	rlAuth.Cleanup(10 * time.Minute)
 	rlGeneral.Cleanup(10 * time.Minute)
 	rlAdmin.Cleanup(10 * time.Minute)
 	rlPayment.Cleanup(10 * time.Minute)
 
-	// Start maintenance tasks
 	go func() {
 		time.Sleep(1 * time.Second)
 		ensureIndexesAndAdmin()
@@ -2773,7 +2742,6 @@ func main() {
 	corsConfig.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
 	r.Use(cors.New(corsConfig))
 
-	// Health check
 	r.GET("/", func(c *gin.Context) {
 		c.JSON(200, gin.H{
 			"service": "TwoManga API",
@@ -2783,10 +2751,8 @@ func main() {
 		})
 	})
 
-	// ===== AUTH ROUTES =====
 	auth := r.Group("/auth")
 	{
-		// Strict rate limit for auth endpoints (per IP)
 		auth.POST("/register",
 			RateLimitMiddleware(rlAuth, func(c *gin.Context) string { return "reg_" + getClientIP(c) }),
 			register,
@@ -2795,7 +2761,6 @@ func main() {
 			RateLimitMiddleware(rlAuth, func(c *gin.Context) string { return "login_" + getClientIP(c) }),
 			login,
 		)
-		// Generous rate limit for /me (per user token) - 150/min
 		auth.GET("/me",
 			RateLimitMiddleware(rlAuthMe, func(c *gin.Context) string {
 				return "me_" + c.GetHeader("Authorization")
@@ -2805,7 +2770,6 @@ func main() {
 		)
 	}
 
-	// ===== USER ROUTES =====
 	userGroup := r.Group("/user")
 	userGroup.Use(
 		RateLimitMiddleware(rlGeneral, func(c *gin.Context) string {
@@ -2818,7 +2782,6 @@ func main() {
 		userGroup.GET("/coins", getCoinBalance)
 	}
 
-	// ===== PAYMENT ROUTES =====
 	payment := r.Group("/payment")
 	payment.Use(AuthMiddleware(false))
 	{
@@ -2841,13 +2804,11 @@ func main() {
 			buyCoins,
 		)
 	}
-	// Callback has no auth (called by gateway) but has IP-based rate limit
 	r.GET("/payment/callback",
 		RateLimitMiddleware(rlGeneral, func(c *gin.Context) string { return "cb_" + getClientIP(c) }),
 		paymentCallback,
 	)
 
-	// ===== ADMIN ROUTES =====
 	admin := r.Group("/admin")
 	admin.Use(
 		RateLimitMiddleware(rlAdmin, func(c *gin.Context) string {
@@ -2856,30 +2817,24 @@ func main() {
 		AuthMiddleware(true),
 	)
 	{
-		// Transactions
 		admin.GET("/transactions", adminListTx)
 		admin.POST("/transactions/:tx_id/approve", adminApproveTx)
 		admin.POST("/transactions/:tx_id/reject", adminRejectTx)
 
-		// Coupons
 		admin.GET("/coupons", manageCoupons)
 		admin.POST("/coupons", manageCoupons)
 
-		// User management
 		admin.GET("/users/search", adminSearchUsers)
 		admin.POST("/users/:user_id/ban", adminBanUser)
 		admin.POST("/users/:user_id/unban", adminUnbanUser)
 
-		// Reports
 		admin.GET("/reports/purchases", adminPurchaseReport)
 
-		// Plan management
 		admin.GET("/plans", adminListPlans)
 		admin.POST("/plans", adminCreatePlan)
 		admin.PUT("/plans/:plan_id", adminUpdatePlan)
 		admin.DELETE("/plans/:plan_id", adminDeletePlan)
 
-		// Coin packages
 		admin.GET("/coin-packages", adminListCoinPackages)
 		admin.POST("/coin-packages", adminCreateCoinPackage)
 	}
