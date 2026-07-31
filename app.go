@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"container/heap"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -137,14 +139,17 @@ type User struct {
 }
 
 type Coupon struct {
-	ID        primitive.ObjectID   `bson:"_id,omitempty" json:"id"`
-	Code      string               `bson:"code" json:"code"`
-	BonusDays int                  `bson:"bonus_days" json:"bonus_days"`
-	MaxUses   *int                 `bson:"max_uses" json:"max_uses"`
-	Uses      int                  `bson:"uses" json:"uses"`
-	UsedBy    []primitive.ObjectID `bson:"used_by" json:"used_by"`
-	ExpiresAt *time.Time           `bson:"expires_at" json:"expires_at"`
-	CreatedAt time.Time            `bson:"created_at" json:"created_at"`
+	ID              primitive.ObjectID   `bson:"_id,omitempty" json:"id"`
+	Code            string               `bson:"code" json:"code"`
+	ApplicableTo    string               `bson:"applicable_to" json:"applicable_to"`
+	TargetID        *primitive.ObjectID  `bson:"target_id,omitempty" json:"target_id,omitempty"`
+	DiscountPercent int                  `bson:"discount_percent,omitempty" json:"discount_percent,omitempty"`
+	BonusDays       int                  `bson:"bonus_days,omitempty" json:"bonus_days,omitempty"`
+	MaxUses         *int                 `bson:"max_uses" json:"max_uses"`
+	Uses            int                  `bson:"uses" json:"uses"`
+	UsedBy          []primitive.ObjectID `bson:"used_by" json:"used_by"`
+	ExpiresAt       *time.Time           `bson:"expires_at" json:"expires_at"`
+	CreatedAt       time.Time            `bson:"created_at" json:"created_at"`
 }
 
 type Transaction struct {
@@ -176,6 +181,7 @@ type PaymentOrder struct {
 	PaidAt     *time.Time         `bson:"paid_at,omitempty" json:"paid_at,omitempty"`
 	Type       string             `bson:"type,omitempty" json:"type,omitempty"`
 	CoinAmount int64              `bson:"coin_amount,omitempty" json:"coin_amount,omitempty"`
+	CouponCode string             `bson:"coupon_code,omitempty" json:"coupon_code,omitempty"`
 }
 
 type Plan struct {
@@ -207,6 +213,16 @@ type CoinPackage struct {
 	CreatedAt time.Time          `bson:"created_at" json:"created_at"`
 }
 
+type CoinSpend struct {
+	ID          primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	UserID      primitive.ObjectID `bson:"user_id" json:"user_id"`
+	Username    string             `bson:"username" json:"username"`
+	Amount      int64              `bson:"amount" json:"amount"`
+	Reason      string             `bson:"reason" json:"reason"`
+	ReferenceID string             `bson:"reference_id,omitempty" json:"reference_id,omitempty"`
+	CreatedAt   time.Time          `bson:"created_at" json:"created_at"`
+}
+
 // ==================== LEGACY PLANS ====================
 
 var LegacyPlans = map[string]struct {
@@ -219,9 +235,30 @@ var LegacyPlans = map[string]struct {
 	"ultra":   {Days: 365, Amount: 8290000},
 }
 
+// getPlanByName returns only ACTIVE plans. Used for new purchases.
 func getPlanByName(ctx context.Context, name string) (*Plan, error) {
 	var plan Plan
 	err := db.Collection("plans").FindOne(ctx, bson.M{"name": name, "active": true}).Decode(&plan)
+	if err == mongo.ErrNoDocuments {
+		if lp, ok := LegacyPlans[name]; ok {
+			return &Plan{
+				Name:   name,
+				Days:   lp.Days,
+				Amount: lp.Amount,
+				Active: true,
+			}, nil
+		}
+		return nil, fmt.Errorf("plan not found: %s", name)
+	}
+	return &plan, err
+}
+
+// getPlanByNameAnyStatus returns a plan regardless of active status.
+// Used by payment callback and reconciliation so that orders created
+// before a plan was deactivated still resolve to the correct day count.
+func getPlanByNameAnyStatus(ctx context.Context, name string) (*Plan, error) {
+	var plan Plan
+	err := db.Collection("plans").FindOne(ctx, bson.M{"name": name}).Decode(&plan)
 	if err == mongo.ErrNoDocuments {
 		if lp, ok := LegacyPlans[name]; ok {
 			return &Plan{
@@ -401,6 +438,13 @@ func getClientIP(c *gin.Context) string {
 	return c.ClientIP()
 }
 
+// tokenKeyHash returns a SHA-256 hash of the Authorization header.
+// This avoids storing raw JWT tokens as map keys in memory.
+func tokenKeyHash(prefix string, c *gin.Context) string {
+	h := sha256.Sum256([]byte(c.GetHeader("Authorization")))
+	return prefix + hex.EncodeToString(h[:])
+}
+
 // ==================== WORKER ENGINE ====================
 
 type JobResult struct {
@@ -525,6 +569,72 @@ func startWorkers(count int) {
 	}
 }
 
+// ==================== COUPON HELPERS ====================
+
+func validateAndUseCoupon(ctx context.Context, code string, userOID primitive.ObjectID, applicableTo string, targetID *primitive.ObjectID) (*Coupon, string) {
+	couponColl := db.Collection("coupons")
+	var cp Coupon
+
+	err := couponColl.FindOne(ctx, bson.M{"code": strings.ToUpper(strings.TrimSpace(code))}).Decode(&cp)
+	if err != nil {
+		return nil, "Invalid coupon code"
+	}
+
+	now := time.Now().UTC()
+	if cp.ExpiresAt != nil && cp.ExpiresAt.Before(now) {
+		return nil, "Coupon expired"
+	}
+
+	if cp.MaxUses != nil && cp.Uses >= *cp.MaxUses {
+		return nil, "Coupon usage limit reached"
+	}
+
+	if cp.ApplicableTo != "all" && cp.ApplicableTo != applicableTo {
+		return nil, "Coupon not applicable to this item"
+	}
+
+	if cp.TargetID != nil && targetID != nil && *cp.TargetID != *targetID {
+		return nil, "Coupon not valid for this specific item"
+	}
+	if cp.TargetID != nil && targetID == nil {
+		return nil, "Coupon requires a specific target"
+	}
+
+	if cp.UsedBy == nil {
+		cp.UsedBy = []primitive.ObjectID{}
+	}
+	for _, uID := range cp.UsedBy {
+		if uID == userOID {
+			return nil, "You have already used this coupon"
+		}
+	}
+
+	filter := bson.M{
+		"_id":     cp.ID,
+		"uses":    cp.Uses,
+		"used_by": bson.M{"$ne": userOID},
+	}
+	update := bson.M{
+		"$inc":  bson.M{"uses": 1},
+		"$push": bson.M{"used_by": userOID},
+	}
+
+	var updatedCp Coupon
+	err = couponColl.FindOneAndUpdate(ctx, filter, update, options.FindOneAndUpdate().SetReturnDocument(options.After)).Decode(&updatedCp)
+	if err != nil {
+		return nil, "Coupon unavailable or usage conflict"
+	}
+
+	return &updatedCp, ""
+}
+
+func rollbackCoupon(couponID primitive.ObjectID, userOID primitive.ObjectID) {
+	db.Collection("coupons").UpdateOne(context.Background(), bson.M{"_id": couponID}, bson.M{
+		"$inc":  bson.M{"uses": -1},
+		"$pull": bson.M{"used_by": userOID},
+	})
+}
+
 // ==================== BUSINESS LOGIC ====================
 
 func logicApplyPayment(userIDStr string, couponCode, txHash string, daysReq int) (interface{}, int, error) {
@@ -551,71 +661,30 @@ func logicApplyPayment(userIDStr string, couponCode, txHash string, daysReq int)
 	}
 
 	if couponCode != "" {
-		couponColl := db.Collection("coupons")
-		var cp Coupon
-
-		err := couponColl.FindOne(ctx, bson.M{"code": couponCode}).Decode(&cp)
-		if err != nil {
-			return map[string]string{"msg": "Invalid coupon code"}, 400, nil
+		cp, errMsg := validateAndUseCoupon(ctx, couponCode, userOID, "subscription", nil)
+		if cp == nil {
+			return map[string]string{"msg": errMsg}, 400, nil
 		}
 
-		now := time.Now().UTC()
-		if cp.ExpiresAt != nil && cp.ExpiresAt.Before(now) {
-			couponColl.DeleteOne(ctx, bson.M{"_id": cp.ID})
-			return map[string]string{"msg": "Coupon expired"}, 400, nil
-		}
-		if cp.MaxUses != nil && cp.Uses >= *cp.MaxUses {
-			couponColl.DeleteOne(ctx, bson.M{"_id": cp.ID})
-			return map[string]string{"msg": "Coupon limits reached"}, 400, nil
-		}
-
-		if cp.UsedBy == nil {
-			cp.UsedBy = []primitive.ObjectID{}
-		}
-
-		for _, uID := range cp.UsedBy {
-			if uID == userOID {
-				return map[string]string{"msg": "You have already used this coupon"}, 400, nil
-			}
-		}
-
-		filter := bson.M{
-			"_id":     cp.ID,
-			"uses":    cp.Uses,
-			"used_by": bson.M{"$ne": userOID},
-		}
-		update := bson.M{
-			"$inc":  bson.M{"uses": 1},
-			"$push": bson.M{"used_by": userOID},
-		}
-
-		var updatedCp Coupon
-		err = couponColl.FindOneAndUpdate(ctx, filter, update, options.FindOneAndUpdate().SetReturnDocument(options.After)).Decode(&updatedCp)
-		if err != nil {
-			return map[string]string{"msg": "Coupon unavailable or usage conflict"}, 409, nil
+		bonusDays := cp.BonusDays
+		if bonusDays <= 0 {
+			rollbackCoupon(cp.ID, userOID)
+			return map[string]string{"msg": "Coupon has no bonus days for subscription"}, 400, nil
 		}
 
 		startPoint := time.Now().UTC()
 		if user.ExpiryDate != nil && user.ExpiryDate.After(startPoint) {
 			startPoint = *user.ExpiryDate
 		}
-		newExpiry := startPoint.Add(time.Duration(cp.BonusDays) * 24 * time.Hour)
+		newExpiry := startPoint.Add(time.Duration(bonusDays) * 24 * time.Hour)
 
 		_, err = db.Collection("users").UpdateOne(ctx, bson.M{"_id": userOID}, bson.M{
 			"$set": bson.M{"expiryDate": newExpiry},
 			"$inc": bson.M{"total_purchases": 1},
 		})
-
 		if err != nil {
-			couponColl.UpdateOne(context.Background(), bson.M{"_id": cp.ID}, bson.M{
-				"$inc":  bson.M{"uses": -1},
-				"$pull": bson.M{"used_by": userOID},
-			})
+			rollbackCoupon(cp.ID, userOID)
 			return map[string]string{"msg": "Failed to apply bonus"}, 500, err
-		}
-
-		if updatedCp.MaxUses != nil && updatedCp.Uses >= *updatedCp.MaxUses {
-			couponColl.DeleteOne(context.Background(), bson.M{"_id": updatedCp.ID})
 		}
 
 		return map[string]interface{}{
@@ -720,18 +789,23 @@ func AuthMiddleware(requiredAdmin bool) gin.HandlerFunc {
 
 		var user User
 		err = db.Collection("users").FindOne(ctx, bson.M{"username": username}).Decode(&user)
-
-		if err != nil || user.SessionSalt != claims.SessionSalt {
+		if err != nil {
 			c.AbortWithStatusJSON(401, gin.H{"msg": "Session Expired"})
 			return
 		}
 
+		// FIX: Check ban BEFORE salt so banned users always get 403 with reason
 		if user.Banned {
 			c.AbortWithStatusJSON(403, gin.H{
 				"msg":       "Account suspended",
 				"reason":    user.BanReason,
 				"banned_at": user.BannedAt,
 			})
+			return
+		}
+
+		if user.SessionSalt != claims.SessionSalt {
+			c.AbortWithStatusJSON(401, gin.H{"msg": "Session Expired"})
 			return
 		}
 
@@ -757,7 +831,96 @@ func AuthMiddleware(requiredAdmin bool) gin.HandlerFunc {
 	}
 }
 
-// ==================== HANDLERS ====================
+// ==================== PUBLIC HANDLERS ====================
+
+func publicListPlans(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	opts := options.Find().SetSort(bson.M{"sort_order": 1})
+	cursor, err := db.Collection("plans").Find(ctx, bson.M{"active": true}, opts)
+	if err != nil {
+		c.JSON(500, gin.H{"msg": "DB error"})
+		return
+	}
+	defer cursor.Close(ctx)
+
+	var plans []Plan
+	if err := cursor.All(ctx, &plans); err != nil {
+		c.JSON(500, gin.H{"msg": "Read error"})
+		return
+	}
+
+	if len(plans) == 0 {
+		legacy := make([]gin.H, 0, len(LegacyPlans))
+		for name, p := range LegacyPlans {
+			legacy = append(legacy, gin.H{
+				"name":         name,
+				"display_name": name,
+				"days":         p.Days,
+				"amount":       p.Amount,
+			})
+		}
+		c.JSON(200, gin.H{"plans": legacy})
+		return
+	}
+
+	output := make([]gin.H, 0, len(plans))
+	for _, p := range plans {
+		effAmount := getEffectiveAmount(&p)
+		item := gin.H{
+			"name":         p.Name,
+			"display_name": p.DisplayName,
+			"days":         p.Days,
+			"amount":       effAmount,
+		}
+		if effAmount != p.Amount {
+			item["original_amount"] = p.Amount
+			item["discount_percent"] = p.DiscountPercent
+			if p.DiscountUntil != nil {
+				item["discount_until"] = p.DiscountUntil.Format(time.RFC3339)
+			}
+		}
+		output = append(output, item)
+	}
+
+	c.JSON(200, gin.H{"plans": output})
+}
+
+func publicListCoinPackages(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cursor, err := db.Collection("coin_packages").Find(ctx, bson.M{"active": true}, options.Find().SetSort(bson.M{"amount": 1}))
+	if err != nil {
+		c.JSON(500, gin.H{"msg": "DB error"})
+		return
+	}
+	defer cursor.Close(ctx)
+
+	var packages []CoinPackage
+	if err := cursor.All(ctx, &packages); err != nil {
+		c.JSON(500, gin.H{"msg": "Read error"})
+		return
+	}
+	if packages == nil {
+		packages = []CoinPackage{}
+	}
+
+	output := make([]gin.H, 0, len(packages))
+	for _, pkg := range packages {
+		output = append(output, gin.H{
+			"id":     pkg.ID.Hex(),
+			"name":   pkg.Name,
+			"coins":  pkg.Coins,
+			"amount": pkg.Amount,
+		})
+	}
+
+	c.JSON(200, gin.H{"packages": output})
+}
+
+// ==================== AUTH HANDLERS ====================
 
 func register(c *gin.Context) {
 	var body struct {
@@ -926,6 +1089,8 @@ func getMe(c *gin.Context) {
 	})
 }
 
+// ==================== USER HANDLERS ====================
+
 func submitPayment(c *gin.Context) {
 	uVal, exists := c.Get("user")
 	if !exists {
@@ -970,8 +1135,6 @@ func submitPayment(c *gin.Context) {
 	}
 	c.JSON(code, res)
 }
-
-// ==================== USER TRANSACTION HISTORY ====================
 
 func getUserTransactions(c *gin.Context) {
 	uVal, _ := c.Get("user")
@@ -1046,6 +1209,140 @@ func getUserTransactions(c *gin.Context) {
 		"page":         page,
 		"limit":        limit,
 		"pages":        int(math.Ceil(float64(total) / float64(limit))),
+	})
+}
+
+func getCoinBalance(c *gin.Context) {
+	uVal, _ := c.Get("user")
+	user := uVal.(User)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var freshUser User
+	if err := db.Collection("users").FindOne(ctx, bson.M{"_id": user.ID}).Decode(&freshUser); err != nil {
+		c.JSON(404, gin.H{"msg": "User not found"})
+		return
+	}
+
+	cursor, err := db.Collection("transactions").Find(ctx,
+		bson.M{"user_id": user.ID, "type": "coin_purchase"},
+		options.Find().SetSort(bson.M{"created_at": -1}).SetLimit(20),
+	)
+	if err != nil {
+		c.JSON(200, gin.H{"coins": freshUser.Coins, "purchase_history": []gin.H{}, "spend_history": []gin.H{}})
+		return
+	}
+	defer cursor.Close(ctx)
+
+	var txs []Transaction
+	if err := cursor.All(ctx, &txs); err != nil {
+		c.JSON(200, gin.H{"coins": freshUser.Coins, "purchase_history": []gin.H{}, "spend_history": []gin.H{}})
+		return
+	}
+
+	purchaseHistory := make([]gin.H, 0, len(txs))
+	for _, tx := range txs {
+		purchaseHistory = append(purchaseHistory, gin.H{
+			"id":         tx.ID.Hex(),
+			"amount":     tx.Amount,
+			"status":     tx.Status,
+			"created_at": tx.CreatedAt.Format(time.RFC3339),
+		})
+	}
+
+	spendCur, spendErr := db.Collection("coin_spends").Find(ctx,
+		bson.M{"user_id": user.ID},
+		options.Find().SetSort(bson.M{"created_at": -1}).SetLimit(20),
+	)
+	spendHistory := make([]gin.H, 0)
+	if spendErr == nil {
+		var spends []CoinSpend
+		if err := spendCur.All(ctx, &spends); err == nil {
+			for _, s := range spends {
+				spendHistory = append(spendHistory, gin.H{
+					"id":         s.ID.Hex(),
+					"amount":     s.Amount,
+					"reason":     s.Reason,
+					"created_at": s.CreatedAt.Format(time.RFC3339),
+				})
+			}
+		}
+		spendCur.Close(ctx)
+	}
+
+	c.JSON(200, gin.H{
+		"coins":            freshUser.Coins,
+		"purchase_history": purchaseHistory,
+		"spend_history":    spendHistory,
+	})
+}
+
+func spendCoins(c *gin.Context) {
+	uVal, _ := c.Get("user")
+	user := uVal.(User)
+
+	var body struct {
+		Amount int64  `json:"amount" binding:"required"`
+		Reason string `json:"reason" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(400, gin.H{"msg": "amount and reason are required"})
+		return
+	}
+
+	if body.Amount < 1 {
+		c.JSON(400, gin.H{"msg": "Amount must be positive"})
+		return
+	}
+	if len(body.Reason) > 200 {
+		c.JSON(400, gin.H{"msg": "Reason too long (max 200)"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	res, err := db.Collection("users").UpdateOne(ctx,
+		bson.M{"_id": user.ID, "coins": bson.M{"$gte": body.Amount}},
+		bson.M{"$inc": bson.M{"coins": -body.Amount}},
+	)
+	if err != nil {
+		c.JSON(500, gin.H{"msg": "DB error"})
+		return
+	}
+	if res.MatchedCount == 0 {
+		var freshUser User
+		if err := db.Collection("users").FindOne(ctx, bson.M{"_id": user.ID}).Decode(&freshUser); err != nil {
+			c.JSON(404, gin.H{"msg": "User not found"})
+			return
+		}
+		c.JSON(400, gin.H{
+			"msg":           "Insufficient coins",
+			"current_coins": freshUser.Coins,
+			"requested":     body.Amount,
+		})
+		return
+	}
+
+	now := time.Now().UTC()
+	spend := CoinSpend{
+		UserID:    user.ID,
+		Username:  user.Username,
+		Amount:    body.Amount,
+		Reason:    body.Reason,
+		CreatedAt: now,
+	}
+	db.Collection("coin_spends").InsertOne(ctx, spend)
+
+	var updatedUser User
+	db.Collection("users").FindOne(ctx, bson.M{"_id": user.ID}).Decode(&updatedUser)
+
+	c.JSON(200, gin.H{
+		"msg":       "Coins spent successfully",
+		"spent":     body.Amount,
+		"remaining": updatedUser.Coins,
+		"reason":    body.Reason,
 	})
 }
 
@@ -1242,73 +1539,131 @@ func adminRejectTx(c *gin.Context) {
 	c.JSON(code, res)
 }
 
-func manageCoupons(c *gin.Context) {
-	if c.Request.Method == "GET" {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
+// ==================== ADMIN: COUPONS ====================
 
-		cursor, err := db.Collection("coupons").Find(ctx, bson.M{}, options.Find().SetSort(bson.M{"created_at": -1}))
-		if err != nil {
-			c.JSON(500, gin.H{"msg": "DB error"})
-			return
-		}
-		defer cursor.Close(ctx)
+func adminListCoupons(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
-		var coupons []Coupon
-		if err := cursor.All(ctx, &coupons); err != nil {
-			c.JSON(500, gin.H{"msg": "Read error"})
-			return
-		}
-		if coupons == nil {
-			coupons = []Coupon{}
-		}
-
-		output := make([]gin.H, 0, len(coupons))
-		for _, cp := range coupons {
-			usedByStrs := make([]string, 0, len(cp.UsedBy))
-			for _, u := range cp.UsedBy {
-				usedByStrs = append(usedByStrs, u.Hex())
-			}
-
-			item := gin.H{
-				"_id":        cp.ID.Hex(),
-				"code":       cp.Code,
-				"bonus_days": cp.BonusDays,
-				"max_uses":   cp.MaxUses,
-				"uses":       cp.Uses,
-				"used_by":    usedByStrs,
-				"created_at": cp.CreatedAt.Format(time.RFC3339),
-			}
-			if cp.ExpiresAt != nil {
-				item["expires_at"] = cp.ExpiresAt.Format(time.RFC3339)
-			} else {
-				item["expires_at"] = nil
-			}
-			output = append(output, item)
-		}
-		c.JSON(200, output)
+	cursor, err := db.Collection("coupons").Find(ctx, bson.M{}, options.Find().SetSort(bson.M{"created_at": -1}))
+	if err != nil {
+		c.JSON(500, gin.H{"msg": "DB error"})
 		return
 	}
+	defer cursor.Close(ctx)
 
+	var coupons []Coupon
+	if err := cursor.All(ctx, &coupons); err != nil {
+		c.JSON(500, gin.H{"msg": "Read error"})
+		return
+	}
+	if coupons == nil {
+		coupons = []Coupon{}
+	}
+
+	output := make([]gin.H, 0, len(coupons))
+	for _, cp := range coupons {
+		usedByStrs := make([]string, 0, len(cp.UsedBy))
+		for _, u := range cp.UsedBy {
+			usedByStrs = append(usedByStrs, u.Hex())
+		}
+
+		item := gin.H{
+			"_id":              cp.ID.Hex(),
+			"code":             cp.Code,
+			"applicable_to":    cp.ApplicableTo,
+			"discount_percent": cp.DiscountPercent,
+			"bonus_days":       cp.BonusDays,
+			"max_uses":         cp.MaxUses,
+			"uses":             cp.Uses,
+			"used_by":          usedByStrs,
+			"created_at":       cp.CreatedAt.Format(time.RFC3339),
+		}
+		if cp.TargetID != nil {
+			item["target_id"] = cp.TargetID.Hex()
+		}
+		if cp.ExpiresAt != nil {
+			item["expires_at"] = cp.ExpiresAt.Format(time.RFC3339)
+		} else {
+			item["expires_at"] = nil
+		}
+		output = append(output, item)
+	}
+	c.JSON(200, output)
+}
+
+func adminCreateCoupon(c *gin.Context) {
 	var body struct {
-		Code      string     `json:"code" binding:"required"`
-		BonusDays int        `json:"bonus_days" binding:"required"`
-		MaxUses   *int       `json:"max_uses"`
-		ExpiresAt *time.Time `json:"expires_at"`
+		Code            string     `json:"code" binding:"required"`
+		ApplicableTo    string     `json:"applicable_to" binding:"required"`
+		TargetID        string     `json:"target_id"`
+		DiscountPercent int        `json:"discount_percent"`
+		BonusDays       int        `json:"bonus_days"`
+		MaxUses         *int       `json:"max_uses"`
+		ExpiresAt       *time.Time `json:"expires_at"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
-		c.JSON(400, gin.H{"msg": "Validation error"})
+		c.JSON(400, gin.H{"msg": "Validation error", "detail": err.Error()})
 		return
+	}
+
+	validTypes := map[string]bool{"subscription": true, "plan": true, "coin_package": true, "all": true}
+	if !validTypes[body.ApplicableTo] {
+		c.JSON(400, gin.H{"msg": "applicable_to must be: subscription, plan, coin_package, or all"})
+		return
+	}
+
+	if body.DiscountPercent < 0 || body.DiscountPercent > 100 {
+		c.JSON(400, gin.H{"msg": "discount_percent must be 0-100"})
+		return
+	}
+	if body.BonusDays < 0 {
+		c.JSON(400, gin.H{"msg": "bonus_days must be >= 0"})
+		return
+	}
+	if body.DiscountPercent == 0 && body.BonusDays == 0 {
+		c.JSON(400, gin.H{"msg": "Either discount_percent or bonus_days must be set"})
+		return
+	}
+
+	var targetOID *primitive.ObjectID
+	if body.TargetID != "" {
+		oid, err := primitive.ObjectIDFromHex(body.TargetID)
+		if err != nil {
+			c.JSON(400, gin.H{"msg": "Invalid target_id format"})
+			return
+		}
+		targetOID = &oid
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if body.ApplicableTo == "plan" {
+			count, _ := db.Collection("plans").CountDocuments(ctx, bson.M{"_id": oid})
+			if count == 0 {
+				c.JSON(404, gin.H{"msg": "Target plan not found"})
+				return
+			}
+		} else if body.ApplicableTo == "coin_package" {
+			count, _ := db.Collection("coin_packages").CountDocuments(ctx, bson.M{"_id": oid})
+			if count == 0 {
+				c.JSON(404, gin.H{"msg": "Target coin package not found"})
+				return
+			}
+		}
 	}
 
 	newC := Coupon{
-		Code:      strings.ToUpper(strings.TrimSpace(body.Code)),
-		BonusDays: body.BonusDays,
-		MaxUses:   body.MaxUses,
-		ExpiresAt: body.ExpiresAt,
-		Uses:      0,
-		UsedBy:    []primitive.ObjectID{},
-		CreatedAt: time.Now().UTC(),
+		Code:            strings.ToUpper(strings.TrimSpace(body.Code)),
+		ApplicableTo:    body.ApplicableTo,
+		TargetID:        targetOID,
+		DiscountPercent: body.DiscountPercent,
+		BonusDays:       body.BonusDays,
+		MaxUses:         body.MaxUses,
+		ExpiresAt:       body.ExpiresAt,
+		Uses:            0,
+		UsedBy:          []primitive.ObjectID{},
+		CreatedAt:       time.Now().UTC(),
 	}
 
 	_, err := db.Collection("coupons").InsertOne(context.Background(), newC)
@@ -1316,10 +1671,34 @@ func manageCoupons(c *gin.Context) {
 		c.JSON(409, gin.H{"msg": "Coupon code already exists"})
 		return
 	}
-	c.JSON(201, gin.H{"msg": "Coupon created"})
+	c.JSON(201, gin.H{"msg": "Coupon created", "coupon_id": newC.ID.Hex()})
 }
 
-// ==================== ADMIN: USER SEARCH ====================
+func adminDeleteCoupon(c *gin.Context) {
+	couponID := c.Param("coupon_id")
+	oid, err := primitive.ObjectIDFromHex(couponID)
+	if err != nil {
+		c.JSON(400, gin.H{"msg": "Invalid coupon ID"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	res, err := db.Collection("coupons").DeleteOne(ctx, bson.M{"_id": oid})
+	if err != nil {
+		c.JSON(500, gin.H{"msg": "DB error"})
+		return
+	}
+	if res.DeletedCount == 0 {
+		c.JSON(404, gin.H{"msg": "Coupon not found"})
+		return
+	}
+
+	c.JSON(200, gin.H{"msg": "Coupon deleted"})
+}
+
+// ==================== ADMIN: USER MANAGEMENT ====================
 
 func adminSearchUsers(c *gin.Context) {
 	query := strings.TrimSpace(c.Query("q"))
@@ -1419,8 +1798,6 @@ func adminSearchUsers(c *gin.Context) {
 		"pages":  int(math.Ceil(float64(total) / float64(limit))),
 	})
 }
-
-// ==================== ADMIN: BAN / UNBAN ====================
 
 func adminBanUser(c *gin.Context) {
 	userID := c.Param("user_id")
@@ -1529,7 +1906,48 @@ func adminUnbanUser(c *gin.Context) {
 	c.JSON(200, gin.H{"msg": "User unbanned successfully"})
 }
 
-// ==================== ADMIN: PURCHASE REPORTS ====================
+func adminCancelSubscription(c *gin.Context) {
+	userID := c.Param("user_id")
+	uVal, _ := c.Get("user")
+	admin := uVal.(User)
+
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	c.ShouldBindJSON(&body)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	oid, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		c.JSON(400, gin.H{"msg": "Invalid user ID"})
+		return
+	}
+
+	res, err := db.Collection("users").UpdateOne(ctx,
+		bson.M{"_id": oid, "expiryDate": bson.M{"$exists": true, "$ne": nil}},
+		bson.M{"$unset": bson.M{"expiryDate": ""}},
+	)
+	if err != nil {
+		c.JSON(500, gin.H{"msg": "DB error"})
+		return
+	}
+	if res.MatchedCount == 0 {
+		count, _ := db.Collection("users").CountDocuments(ctx, bson.M{"_id": oid})
+		if count == 0 {
+			c.JSON(404, gin.H{"msg": "User not found"})
+		} else {
+			c.JSON(409, gin.H{"msg": "User has no active subscription"})
+		}
+		return
+	}
+
+	log.Printf("Admin %s cancelled subscription for user %s. Reason: %s", admin.Username, userID, body.Reason)
+	c.JSON(200, gin.H{"msg": "Subscription cancelled"})
+}
+
+// ==================== ADMIN: REPORTS ====================
 
 func adminPurchaseReport(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -1679,7 +2097,7 @@ func adminListPlans(c *gin.Context) {
 				"source": "legacy",
 			})
 		}
-		c.JSON(200, gin.H{"plans": legacy, "note": "Using legacy hardcoded plans. Create plans in DB to manage dynamically."})
+		c.JSON(200, gin.H{"plans": legacy, "note": "Using legacy hardcoded plans."})
 		return
 	}
 
@@ -1862,6 +2280,7 @@ func adminUpdatePlan(c *gin.Context) {
 	c.JSON(200, gin.H{"msg": "Plan updated"})
 }
 
+// DELETE /admin/plans/:plan_id - soft delete (deactivate)
 func adminDeletePlan(c *gin.Context) {
 	planID := c.Param("plan_id")
 	oid, err := primitive.ObjectIDFromHex(planID)
@@ -1874,7 +2293,10 @@ func adminDeletePlan(c *gin.Context) {
 	defer cancel()
 
 	res, err := db.Collection("plans").UpdateOne(ctx, bson.M{"_id": oid}, bson.M{
-		"$set": bson.M{"active": false, "updated_at": time.Now().UTC()},
+		"$set": bson.M{
+			"active":     false,
+			"updated_at": time.Now().UTC(),
+		},
 	})
 	if err != nil {
 		c.JSON(500, gin.H{"msg": "DB error"})
@@ -1888,7 +2310,7 @@ func adminDeletePlan(c *gin.Context) {
 	c.JSON(200, gin.H{"msg": "Plan deactivated"})
 }
 
-// ==================== COIN SYSTEM ====================
+// ==================== ADMIN: COIN PACKAGES ====================
 
 func adminListCoinPackages(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -1961,158 +2383,28 @@ func adminCreateCoinPackage(c *gin.Context) {
 	c.JSON(201, gin.H{"msg": "Coin package created", "package": pkg})
 }
 
-func buyCoins(c *gin.Context) {
-	uVal, _ := c.Get("user")
-	user := uVal.(User)
-
-	var body struct {
-		PackageID string `json:"package_id" binding:"required"`
-	}
-	if err := c.ShouldBindJSON(&body); err != nil {
-		c.JSON(400, gin.H{"msg": "package_id required"})
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
-	defer cancel()
-
-	pkgOID, err := primitive.ObjectIDFromHex(body.PackageID)
+func adminDeleteCoinPackage(c *gin.Context) {
+	pkgID := c.Param("pkg_id")
+	oid, err := primitive.ObjectIDFromHex(pkgID)
 	if err != nil {
 		c.JSON(400, gin.H{"msg": "Invalid package ID"})
 		return
 	}
 
-	var pkg CoinPackage
-	if err := db.Collection("coin_packages").FindOne(ctx, bson.M{"_id": pkgOID, "active": true}).Decode(&pkg); err != nil {
-		c.JSON(404, gin.H{"msg": "Package not found or inactive"})
-		return
-	}
-
-	merchant := os.Getenv("ZIBAL_MERCHANT")
-	callback := os.Getenv("ZIBAL_CALLBACK_URL")
-	if merchant == "" || callback == "" {
-		c.JSON(500, gin.H{"msg": "Payment gateway not configured"})
-		return
-	}
-
-	order := PaymentOrder{
-		UserID:     user.ID,
-		Plan:       "coins_" + pkg.Name,
-		Amount:     pkg.Amount,
-		Status:     "created",
-		Type:       "coins",
-		CoinAmount: pkg.Coins,
-		CreatedAt:  time.Now().UTC(),
-	}
-
-	res, err := db.Collection("payment_orders").InsertOne(ctx, order)
-	if err != nil {
-		c.JSON(500, gin.H{"msg": "DB error"})
-		return
-	}
-	oid, ok := res.InsertedID.(primitive.ObjectID)
-	if !ok {
-		c.JSON(500, gin.H{"msg": "DB error"})
-		return
-	}
-
-	payload := map[string]interface{}{
-		"merchant":    merchant,
-		"amount":      pkg.Amount,
-		"callbackUrl": callback,
-		"description": fmt.Sprintf("TwoManga Coins: %d (%s)", pkg.Coins, pkg.Name),
-	}
-
-	resp, err := zibalPost("v1/request", payload)
-	if err != nil {
-		db.Collection("payment_orders").UpdateOne(context.Background(), bson.M{"_id": oid}, bson.M{
-			"$set": bson.M{"status": "failed", "zibal_error": err.Error()},
-		})
-		c.JSON(502, gin.H{"msg": "Gateway error"})
-		return
-	}
-
-	resultStr := interfaceToString(resp["result"])
-	if resultStr != "100" {
-		msg := requestResult(resultStr)
-		db.Collection("payment_orders").UpdateOne(context.Background(), bson.M{"_id": oid}, bson.M{
-			"$set": bson.M{"status": "failed"},
-		})
-		c.JSON(400, gin.H{"msg": "Payment gateway rejected", "detail": msg})
-		return
-	}
-
-	trackID := interfaceToString(resp["trackId"])
-	if trackID == "" {
-		db.Collection("payment_orders").UpdateOne(context.Background(), bson.M{"_id": oid}, bson.M{
-			"$set": bson.M{"status": "failed"},
-		})
-		c.JSON(500, gin.H{"msg": "Gateway returned no trackId"})
-		return
-	}
-
-	db.Collection("payment_orders").UpdateOne(context.Background(),
-		bson.M{"_id": oid},
-		bson.M{"$set": bson.M{"track_id": trackID, "status": "pending"}})
-
-	redirectURL := os.Getenv("ZIBAL_GATEWAY_BASE")
-	if redirectURL == "" {
-		redirectURL = "https://gateway.zibal.ir"
-	}
-	redirectURL = strings.TrimRight(redirectURL, "/")
-
-	c.JSON(200, gin.H{
-		"redirect_url": redirectURL + "/start/" + trackID,
-		"track_id":     trackID,
-		"order_id":     oid.Hex(),
-		"coins":        pkg.Coins,
-		"amount":       pkg.Amount,
-	})
-}
-
-func getCoinBalance(c *gin.Context) {
-	uVal, _ := c.Get("user")
-	user := uVal.(User)
-
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	var freshUser User
-	if err := db.Collection("users").FindOne(ctx, bson.M{"_id": user.ID}).Decode(&freshUser); err != nil {
-		c.JSON(404, gin.H{"msg": "User not found"})
-		return
-	}
-
-	cursor, err := db.Collection("transactions").Find(ctx,
-		bson.M{"user_id": user.ID, "type": "coin_purchase"},
-		options.Find().SetSort(bson.M{"created_at": -1}).SetLimit(20),
-	)
+	res, err := db.Collection("coin_packages").DeleteOne(ctx, bson.M{"_id": oid})
 	if err != nil {
-		c.JSON(200, gin.H{"coins": freshUser.Coins, "history": []gin.H{}})
+		c.JSON(500, gin.H{"msg": "DB error"})
 		return
 	}
-	defer cursor.Close(ctx)
-
-	var txs []Transaction
-	if err := cursor.All(ctx, &txs); err != nil {
-		c.JSON(200, gin.H{"coins": freshUser.Coins, "history": []gin.H{}})
+	if res.DeletedCount == 0 {
+		c.JSON(404, gin.H{"msg": "Coin package not found"})
 		return
 	}
 
-	history := make([]gin.H, 0, len(txs))
-	for _, tx := range txs {
-		history = append(history, gin.H{
-			"id":         tx.ID.Hex(),
-			"amount":     tx.Amount,
-			"status":     tx.Status,
-			"created_at": tx.CreatedAt.Format(time.RFC3339),
-		})
-	}
-
-	c.JSON(200, gin.H{
-		"coins":   freshUser.Coins,
-		"history": history,
-	})
+	c.JSON(200, gin.H{"msg": "Coin package deleted"})
 }
 
 // ==================== ZIBAL HELPER ====================
@@ -2195,7 +2487,8 @@ func createPayment(c *gin.Context) {
 	user := uVal.(User)
 
 	var body struct {
-		Plan string `json:"plan" binding:"required"`
+		Plan       string `json:"plan" binding:"required"`
+		CouponCode string `json:"coupon_code"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(400, gin.H{"msg": "Invalid request"})
@@ -2213,32 +2506,57 @@ func createPayment(c *gin.Context) {
 
 	effectiveAmount := getEffectiveAmount(plan)
 
+	// FIX: Reject coupons that have no discount for gateway purchases
+	var usedCoupon *Coupon
+	if body.CouponCode != "" {
+		cp, errMsg := validateAndUseCoupon(ctx, body.CouponCode, user.ID, "plan", &plan.ID)
+		if cp == nil {
+			c.JSON(400, gin.H{"msg": errMsg})
+			return
+		}
+		if cp.DiscountPercent <= 0 {
+			rollbackCoupon(cp.ID, user.ID)
+			c.JSON(400, gin.H{"msg": "This coupon has no discount for gateway purchase"})
+			return
+		}
+		usedCoupon = cp
+		effectiveAmount = effectiveAmount * int64(100-cp.DiscountPercent) / 100
+	}
+
 	merchant := os.Getenv("ZIBAL_MERCHANT")
 	callback := os.Getenv("ZIBAL_CALLBACK_URL")
 	if merchant == "" || callback == "" {
-		log.Println("ZIBAL envs missing")
+		if usedCoupon != nil {
+			rollbackCoupon(usedCoupon.ID, user.ID)
+		}
 		c.JSON(500, gin.H{"msg": "Payment gateway not configured"})
 		return
 	}
 
 	order := PaymentOrder{
-		UserID:    user.ID,
-		Plan:      body.Plan,
-		Amount:    effectiveAmount,
-		Status:    "created",
-		Type:      "subscription",
-		CreatedAt: time.Now().UTC(),
+		UserID:     user.ID,
+		Plan:       body.Plan,
+		Amount:     effectiveAmount,
+		Status:     "created",
+		Type:       "subscription",
+		CreatedAt:  time.Now().UTC(),
+		CouponCode: body.CouponCode,
 	}
 
 	res, err := db.Collection("payment_orders").InsertOne(ctx, order)
 	if err != nil {
-		log.Printf("insert payment order error: %v", err)
+		if usedCoupon != nil {
+			rollbackCoupon(usedCoupon.ID, user.ID)
+		}
 		c.JSON(500, gin.H{"msg": "DB error"})
 		return
 	}
 
 	oid, ok := res.InsertedID.(primitive.ObjectID)
 	if !ok {
+		if usedCoupon != nil {
+			rollbackCoupon(usedCoupon.ID, user.ID)
+		}
 		c.JSON(500, gin.H{"msg": "DB error"})
 		return
 	}
@@ -2252,7 +2570,9 @@ func createPayment(c *gin.Context) {
 
 	resp, err := zibalPost("v1/request", payload)
 	if err != nil {
-		log.Printf("zibal request error: %v", err)
+		if usedCoupon != nil {
+			rollbackCoupon(usedCoupon.ID, user.ID)
+		}
 		db.Collection("payment_orders").UpdateOne(context.Background(), bson.M{"_id": oid}, bson.M{
 			"$set": bson.M{"status": "failed", "zibal_error": err.Error()},
 		})
@@ -2262,8 +2582,10 @@ func createPayment(c *gin.Context) {
 
 	resultStr := interfaceToString(resp["result"])
 	if resultStr != "100" {
+		if usedCoupon != nil {
+			rollbackCoupon(usedCoupon.ID, user.ID)
+		}
 		msg := requestResult(resultStr)
-		log.Printf("zibal returned error: %v", resp)
 		db.Collection("payment_orders").UpdateOne(context.Background(), bson.M{"_id": oid}, bson.M{
 			"$set": bson.M{"status": "failed"},
 		})
@@ -2273,6 +2595,9 @@ func createPayment(c *gin.Context) {
 
 	trackID := interfaceToString(resp["trackId"])
 	if trackID == "" {
+		if usedCoupon != nil {
+			rollbackCoupon(usedCoupon.ID, user.ID)
+		}
 		db.Collection("payment_orders").UpdateOne(context.Background(), bson.M{"_id": oid}, bson.M{
 			"$set": bson.M{"status": "failed"},
 		})
@@ -2300,6 +2625,155 @@ func createPayment(c *gin.Context) {
 	})
 }
 
+func buyCoins(c *gin.Context) {
+	uVal, _ := c.Get("user")
+	user := uVal.(User)
+
+	var body struct {
+		PackageID  string `json:"package_id" binding:"required"`
+		CouponCode string `json:"coupon_code"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(400, gin.H{"msg": "package_id required"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+
+	pkgOID, err := primitive.ObjectIDFromHex(body.PackageID)
+	if err != nil {
+		c.JSON(400, gin.H{"msg": "Invalid package ID"})
+		return
+	}
+
+	var pkg CoinPackage
+	if err := db.Collection("coin_packages").FindOne(ctx, bson.M{"_id": pkgOID, "active": true}).Decode(&pkg); err != nil {
+		c.JSON(404, gin.H{"msg": "Package not found or inactive"})
+		return
+	}
+
+	effectiveAmount := pkg.Amount
+
+	// FIX: Reject coupons that have no discount for coin purchases
+	var usedCoupon *Coupon
+	if body.CouponCode != "" {
+		cp, errMsg := validateAndUseCoupon(ctx, body.CouponCode, user.ID, "coin_package", &pkg.ID)
+		if cp == nil {
+			c.JSON(400, gin.H{"msg": errMsg})
+			return
+		}
+		if cp.DiscountPercent <= 0 {
+			rollbackCoupon(cp.ID, user.ID)
+			c.JSON(400, gin.H{"msg": "This coupon has no discount for coin purchase"})
+			return
+		}
+		usedCoupon = cp
+		effectiveAmount = effectiveAmount * int64(100-cp.DiscountPercent) / 100
+	}
+
+	merchant := os.Getenv("ZIBAL_MERCHANT")
+	callback := os.Getenv("ZIBAL_CALLBACK_URL")
+	if merchant == "" || callback == "" {
+		if usedCoupon != nil {
+			rollbackCoupon(usedCoupon.ID, user.ID)
+		}
+		c.JSON(500, gin.H{"msg": "Payment gateway not configured"})
+		return
+	}
+
+	order := PaymentOrder{
+		UserID:     user.ID,
+		Plan:       "coins_" + pkg.Name,
+		Amount:     effectiveAmount,
+		Status:     "created",
+		Type:       "coins",
+		CoinAmount: pkg.Coins,
+		CreatedAt:  time.Now().UTC(),
+		CouponCode: body.CouponCode,
+	}
+
+	res, err := db.Collection("payment_orders").InsertOne(ctx, order)
+	if err != nil {
+		if usedCoupon != nil {
+			rollbackCoupon(usedCoupon.ID, user.ID)
+		}
+		c.JSON(500, gin.H{"msg": "DB error"})
+		return
+	}
+	oid, ok := res.InsertedID.(primitive.ObjectID)
+	if !ok {
+		if usedCoupon != nil {
+			rollbackCoupon(usedCoupon.ID, user.ID)
+		}
+		c.JSON(500, gin.H{"msg": "DB error"})
+		return
+	}
+
+	payload := map[string]interface{}{
+		"merchant":    merchant,
+		"amount":      effectiveAmount,
+		"callbackUrl": callback,
+		"description": fmt.Sprintf("TwoManga Coins: %d (%s)", pkg.Coins, pkg.Name),
+	}
+
+	resp, err := zibalPost("v1/request", payload)
+	if err != nil {
+		if usedCoupon != nil {
+			rollbackCoupon(usedCoupon.ID, user.ID)
+		}
+		db.Collection("payment_orders").UpdateOne(context.Background(), bson.M{"_id": oid}, bson.M{
+			"$set": bson.M{"status": "failed", "zibal_error": err.Error()},
+		})
+		c.JSON(502, gin.H{"msg": "Gateway error"})
+		return
+	}
+
+	resultStr := interfaceToString(resp["result"])
+	if resultStr != "100" {
+		if usedCoupon != nil {
+			rollbackCoupon(usedCoupon.ID, user.ID)
+		}
+		msg := requestResult(resultStr)
+		db.Collection("payment_orders").UpdateOne(context.Background(), bson.M{"_id": oid}, bson.M{
+			"$set": bson.M{"status": "failed"},
+		})
+		c.JSON(400, gin.H{"msg": "Payment gateway rejected", "detail": msg})
+		return
+	}
+
+	trackID := interfaceToString(resp["trackId"])
+	if trackID == "" {
+		if usedCoupon != nil {
+			rollbackCoupon(usedCoupon.ID, user.ID)
+		}
+		db.Collection("payment_orders").UpdateOne(context.Background(), bson.M{"_id": oid}, bson.M{
+			"$set": bson.M{"status": "failed"},
+		})
+		c.JSON(500, gin.H{"msg": "Gateway returned no trackId"})
+		return
+	}
+
+	db.Collection("payment_orders").UpdateOne(context.Background(),
+		bson.M{"_id": oid},
+		bson.M{"$set": bson.M{"track_id": trackID, "status": "pending"}})
+
+	redirectURL := os.Getenv("ZIBAL_GATEWAY_BASE")
+	if redirectURL == "" {
+		redirectURL = "https://gateway.zibal.ir"
+	}
+	redirectURL = strings.TrimRight(redirectURL, "/")
+
+	c.JSON(200, gin.H{
+		"redirect_url": redirectURL + "/start/" + trackID,
+		"track_id":     trackID,
+		"order_id":     oid.Hex(),
+		"coins":        pkg.Coins,
+		"amount":       effectiveAmount,
+	})
+}
+
+// GET /payment/callback - uses getPlanByNameAnyStatus so deactivated plans still resolve
 func paymentCallback(c *gin.Context) {
 	trackID := c.Query("trackId")
 	if trackID == "" {
@@ -2410,7 +2884,8 @@ func paymentCallback(c *gin.Context) {
 		start = *user.ExpiryDate
 	}
 
-	plan, err := getPlanByName(ctx, order.Plan)
+	// FIX: Use AnyStatus so deactivated plans still resolve correctly
+	plan, err := getPlanByNameAnyStatus(ctx, order.Plan)
 	if err != nil {
 		plan = &Plan{Days: 30, Amount: order.Amount}
 	}
@@ -2546,7 +3021,9 @@ func reconcilePendingPayments(interval time.Duration, minAge time.Duration) {
 				if user.ExpiryDate != nil && user.ExpiryDate.After(start) {
 					start = *user.ExpiryDate
 				}
-				plan, err := getPlanByName(context.Background(), order.Plan)
+
+				// FIX: Use AnyStatus so deactivated plans still resolve correctly
+				plan, err := getPlanByNameAnyStatus(context.Background(), order.Plan)
 				if err != nil {
 					plan = &Plan{Days: 30, Amount: order.Amount}
 				}
@@ -2644,6 +3121,10 @@ func ensureIndexesAndAdmin() {
 		Keys: bson.D{{Key: "active", Value: 1}},
 	})
 
+	db.Collection("coin_spends").Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys: bson.D{{Key: "user_id", Value: 1}, {Key: "created_at", Value: -1}},
+	})
+
 	if cfg.AdminEnvUser != "" && cfg.AdminEnvPass != "" {
 		hash, _ := hashPassword(cfg.AdminEnvPass)
 		userColl := db.Collection("users")
@@ -2707,7 +3188,7 @@ func cleanupCouponsTask() {
 // ==================== MAIN ====================
 
 func main() {
-	log.Println("Starting Server v2...")
+	log.Println("Starting Server v4...")
 	loadConfig()
 	connectDB()
 
@@ -2745,12 +3226,17 @@ func main() {
 	r.GET("/", func(c *gin.Context) {
 		c.JSON(200, gin.H{
 			"service": "TwoManga API",
-			"version": "2.0",
+			"version": "4.0",
 			"status":  "healthy",
 			"workers": cfg.WorkerCount,
 		})
 	})
 
+	// ===== PUBLIC ROUTES =====
+	r.GET("/plans", publicListPlans)
+	r.GET("/coin-packages", publicListCoinPackages)
+
+	// ===== AUTH ROUTES =====
 	auth := r.Group("/auth")
 	{
 		auth.POST("/register",
@@ -2761,45 +3247,49 @@ func main() {
 			RateLimitMiddleware(rlAuth, func(c *gin.Context) string { return "login_" + getClientIP(c) }),
 			login,
 		)
+		// FIX: rate limit key uses SHA-256 hash instead of raw token
 		auth.GET("/me",
 			RateLimitMiddleware(rlAuthMe, func(c *gin.Context) string {
-				return "me_" + c.GetHeader("Authorization")
+				return tokenKeyHash("me_", c)
 			}),
 			AuthMiddleware(false),
 			getMe,
 		)
 	}
 
+	// ===== USER ROUTES =====
 	userGroup := r.Group("/user")
 	userGroup.Use(
 		RateLimitMiddleware(rlGeneral, func(c *gin.Context) string {
-			return "user_" + c.GetHeader("Authorization")
+			return tokenKeyHash("user_", c)
 		}),
 		AuthMiddleware(false),
 	)
 	{
 		userGroup.GET("/transactions", getUserTransactions)
 		userGroup.GET("/coins", getCoinBalance)
+		userGroup.POST("/spend-coins", spendCoins)
 	}
 
+	// ===== PAYMENT ROUTES =====
 	payment := r.Group("/payment")
 	payment.Use(AuthMiddleware(false))
 	{
 		payment.POST("/submit",
 			RateLimitMiddleware(rlPayment, func(c *gin.Context) string {
-				return "pay_" + c.GetHeader("Authorization")
+				return tokenKeyHash("pay_", c)
 			}),
 			submitPayment,
 		)
 		payment.POST("/create",
 			RateLimitMiddleware(rlPayment, func(c *gin.Context) string {
-				return "pay_" + c.GetHeader("Authorization")
+				return tokenKeyHash("pay_", c)
 			}),
 			createPayment,
 		)
 		payment.POST("/buy-coins",
 			RateLimitMiddleware(rlPayment, func(c *gin.Context) string {
-				return "coin_" + c.GetHeader("Authorization")
+				return tokenKeyHash("coin_", c)
 			}),
 			buyCoins,
 		)
@@ -2809,10 +3299,11 @@ func main() {
 		paymentCallback,
 	)
 
+	// ===== ADMIN ROUTES =====
 	admin := r.Group("/admin")
 	admin.Use(
 		RateLimitMiddleware(rlAdmin, func(c *gin.Context) string {
-			return "admin_" + c.GetHeader("Authorization")
+			return tokenKeyHash("admin_", c)
 		}),
 		AuthMiddleware(true),
 	)
@@ -2821,12 +3312,14 @@ func main() {
 		admin.POST("/transactions/:tx_id/approve", adminApproveTx)
 		admin.POST("/transactions/:tx_id/reject", adminRejectTx)
 
-		admin.GET("/coupons", manageCoupons)
-		admin.POST("/coupons", manageCoupons)
+		admin.GET("/coupons", adminListCoupons)
+		admin.POST("/coupons", adminCreateCoupon)
+		admin.DELETE("/coupons/:coupon_id", adminDeleteCoupon)
 
 		admin.GET("/users/search", adminSearchUsers)
 		admin.POST("/users/:user_id/ban", adminBanUser)
 		admin.POST("/users/:user_id/unban", adminUnbanUser)
+		admin.POST("/users/:user_id/cancel-subscription", adminCancelSubscription)
 
 		admin.GET("/reports/purchases", adminPurchaseReport)
 
@@ -2837,6 +3330,7 @@ func main() {
 
 		admin.GET("/coin-packages", adminListCoinPackages)
 		admin.POST("/coin-packages", adminCreateCoinPackage)
+		admin.DELETE("/coin-packages/:pkg_id", adminDeleteCoinPackage)
 	}
 
 	srv := &http.Server{
@@ -2852,7 +3346,7 @@ func main() {
 			log.Fatalf("Listen error: %s\n", err)
 		}
 	}()
-	log.Printf("Server v2 listening on port %s", cfg.Port)
+	log.Printf("Server v4 listening on port %s", cfg.Port)
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
