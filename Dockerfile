@@ -61,13 +61,16 @@ WORKDIR /app
 # کپی کردن فایل اجرایی بیلد شده از مرحله Builder
 COPY --from=builder /app/app .
 
-# تغییر مالکیت فایل اجرایی به کاربر غیر روت
-RUN chown appuser:appgroup /app/app
+# 🎯 اضافه شده: کپی کردن فایل index.html از مرحله Builder
+COPY --from=builder /app/index.html .
+
+# تغییر مالکیت فایل‌ها به کاربر غیر روت
+RUN chown appuser:appgroup /app/app /app/index.html
 
 # تغییر به کاربر غیر روت قبل از اجرای CMD
 USER appuser
 
-# اکسپوز کردن پورتی که برنامه شما روی آن اجرا می‌شود (اگر از پورت 10000 استفاده می‌کنید)
+# اکسپوز کردن پورتی که برنامه شما روی آن اجرا می‌شود
 EXPOSE 10000
 
 # دستور اجرای برنامه
