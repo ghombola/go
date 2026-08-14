@@ -63,7 +63,7 @@ func loadConfig() {
 
 	cfg.DBName = os.Getenv("MONGO_DBNAME")
 	if cfg.DBName == "" {
-		cfg.DBName = "test"
+		cfg.DBName = "twomanga"
 	}
 
 	cfg.Port = os.Getenv("PORT")
@@ -3298,6 +3298,11 @@ func main() {
 		RateLimitMiddleware(rlGeneral, func(c *gin.Context) string { return "cb_" + getClientIP(c) }),
 		paymentCallback,
 	)
+	
+	// ===== CALLBACK HTML PAGE =====
+    r.GET("/payment/result", func(c *gin.Context) {
+    c.File("./index.html")
+    })
 
 	// ===== ADMIN ROUTES =====
 	admin := r.Group("/admin")
