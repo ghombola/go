@@ -3185,53 +3185,10 @@ func cleanupCouponsTask() {
 	}
 }
 
-// ==================== MAIN ====================
+// ==================== EXPORTED FUNCTIONS FOR LAUNCHER ====================
 
-func main() {
-	log.Println("Starting Server v4...")
-	loadConfig()
-	connectDB()
-
-	heap.Init(&jobQueue)
-	startWorkers(cfg.WorkerCount)
-
-	rlAuthMe.Cleanup(10 * time.Minute)
-	rlAuth.Cleanup(10 * time.Minute)
-	rlGeneral.Cleanup(10 * time.Minute)
-	rlAdmin.Cleanup(10 * time.Minute)
-	rlPayment.Cleanup(10 * time.Minute)
-
-	go func() {
-		time.Sleep(1 * time.Second)
-		ensureIndexesAndAdmin()
-		go reconcilePendingPayments(5*time.Minute, 1*time.Minute)
-		go cleanupCouponsTask()
-	}()
-
-	gin.SetMode(gin.ReleaseMode)
-	r := gin.New()
-	r.Use(gin.Recovery())
-	r.Use(gin.Logger())
-
-	corsConfig := cors.DefaultConfig()
-	corsConfig.AllowAllOrigins = true
-	if origins := os.Getenv("FRONTEND_ORIGINS"); origins != "" {
-		corsConfig.AllowAllOrigins = false
-		corsConfig.AllowOrigins = strings.Split(origins, ",")
-	}
-	corsConfig.AllowHeaders = []string{"Origin", "Content-Length", "Content-Type", "Authorization"}
-	corsConfig.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
-	r.Use(cors.New(corsConfig))
-
-	r.GET("/", func(c *gin.Context) {
-		c.JSON(200, gin.H{
-			"service": "TwoManga API",
-			"version": "4.0",
-			"status":  "healthy",
-			"workers": cfg.WorkerCount,
-		})
-	})
-
+// SetupSiteRoutes registers all site routes (Auth, User, Payment, Admin)
+func SetupSiteRoutes(r *gin.Engine) {
 	// ===== PUBLIC ROUTES =====
 	r.GET("/plans", publicListPlans)
 	r.GET("/coin-packages", publicListCoinPackages)
@@ -3247,7 +3204,6 @@ func main() {
 			RateLimitMiddleware(rlAuth, func(c *gin.Context) string { return "login_" + getClientIP(c) }),
 			login,
 		)
-		// FIX: rate limit key uses SHA-256 hash instead of raw token
 		auth.GET("/me",
 			RateLimitMiddleware(rlAuthMe, func(c *gin.Context) string {
 				return tokenKeyHash("me_", c)
@@ -3298,11 +3254,11 @@ func main() {
 		RateLimitMiddleware(rlGeneral, func(c *gin.Context) string { return "cb_" + getClientIP(c) }),
 		paymentCallback,
 	)
-	
+
 	// ===== CALLBACK HTML PAGE =====
-    r.GET("/payment/result", func(c *gin.Context) {
-    c.File("./index.html")
-    })
+	r.GET("/payment/result", func(c *gin.Context) {
+		c.File("./index.html")
+	})
 
 	// ===== ADMIN ROUTES =====
 	admin := r.Group("/admin")
@@ -3337,39 +3293,63 @@ func main() {
 		admin.POST("/coin-packages", adminCreateCoinPackage)
 		admin.DELETE("/coin-packages/:pkg_id", adminDeleteCoinPackage)
 	}
+}
 
-	srv := &http.Server{
-		Addr:         ":" + cfg.Port,
-		Handler:      r,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		IdleTimeout:  60 * time.Second,
+// InitWorkerSystem initializes the worker pool
+func InitWorkerSystem() {
+	heap.Init(&jobQueue)
+	startWorkers(cfg.WorkerCount)
+}
+
+// InitRateLimiters starts cleanup goroutines for rate limiters
+func InitRateLimiters() {
+	rlAuthMe.Cleanup(10 * time.Minute)
+	rlAuth.Cleanup(10 * time.Minute)
+	rlGeneral.Cleanup(10 * time.Minute)
+	rlAdmin.Cleanup(10 * time.Minute)
+	rlPayment.Cleanup(10 * time.Minute)
+}
+
+// ConfigureCORS sets up CORS middleware
+func ConfigureCORS(r *gin.Engine) {
+	corsConfig := cors.DefaultConfig()
+	corsConfig.AllowAllOrigins = true
+	if origins := os.Getenv("FRONTEND_ORIGINS"); origins != "" {
+		corsConfig.AllowAllOrigins = false
+		corsConfig.AllowOrigins = strings.Split(origins, ",")
 	}
+	corsConfig.AllowHeaders = []string{"Origin", "Content-Length", "Content-Type", "Authorization"}
+	corsConfig.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
+	r.Use(cors.New(corsConfig))
+}
 
+// GetDB returns the database instance (read-only for other packages)
+func GetDB() *mongo.Database {
+	return db
+}
+
+// GetConfig returns the configuration (read-only)
+func GetConfig() Config {
+	return cfg
+}
+
+// GetMongoClient returns the mongo client (for health checks)
+func GetMongoClient() *mongo.Client {
+	return mongoClient
+}
+
+// StartBackgroundTasks starts reconciliation and cleanup goroutines
+func StartBackgroundTasks() {
 	go func() {
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Listen error: %s\n", err)
-		}
+		time.Sleep(1 * time.Second)
+		ensureIndexesAndAdmin()
+		go reconcilePendingPayments(5*time.Minute, 1*time.Minute)
+		go cleanupCouponsTask()
 	}()
-	log.Printf("Server v4 listening on port %s", cfg.Port)
+}
 
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-	log.Println("Shutting down...")
-
-	close(shutdownCh)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	if err := srv.Shutdown(ctx); err != nil {
-		log.Println("Server Shutdown Force:", err)
-	}
-
-	if mongoClient != nil {
-		mongoClient.Disconnect(context.Background())
-		log.Println("DB Disconnected")
-	}
-	log.Println("Bye.")
+// LoadConfigAndConnectDB loads config and connects to database
+func LoadConfigAndConnectDB() {
+	loadConfig()
+	connectDB()
 }
