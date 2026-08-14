@@ -1,0 +1,1224 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TwoManga - نتیجه پرداخت</title>
+    <meta name="robots" content="noindex, nofollow">
+    <link rel="icon" type="image/webp" href="https://twomanga.top/favicon.webp">
+    <script src="https://twomanga.top/assets/js/lucide.min.js"></script>
+    <link href="https://twomanga.top/assets/css/font-face.css" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-deep: #070311;
+            --bg-surface: #0e0a24;
+            --bg-card: rgba(16, 11, 38, 0.78);
+            --primary: #7c3aed;
+            --primary-light: #8b5cf6;
+            --primary-bright: #a78bfa;
+            --primary-dim: #5b21b6;
+            --primary-glow: rgba(124, 58, 237, 0.4);
+            --accent-pink: #ec4899;
+            --accent-cyan: #06b6d4;
+            --accent-gold: #f59e0b;
+            --glass: rgba(255, 255, 255, 0.03);
+            --glass-hover: rgba(255, 255, 255, 0.07);
+            --border: rgba(139, 92, 246, 0.14);
+            --border-hover: rgba(139, 92, 246, 0.32);
+            --text: #f3f0ff;
+            --text-muted: #a39ec4;
+            --text-dim: #6d6895;
+            --shadow-xl: 0 30px 80px rgba(0, 0, 0, 0.55);
+            --shadow-glow: 0 0 80px rgba(124, 58, 237, 0.18);
+            --ok: #10b981;
+            --ok-bg: rgba(16, 185, 129, 0.1);
+            --ok-border: rgba(16, 185, 129, 0.25);
+            --danger: #ef4444;
+            --danger-bg: rgba(239, 68, 68, 0.1);
+            --danger-border: rgba(239, 68, 68, 0.25);
+            --r-sm: 12px;
+            --r-md: 16px;
+            --r-lg: 24px;
+            --r-xl: 32px;
+            --tr: 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+            --font: 'Vazir', system-ui, -apple-system, sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html {
+            -webkit-text-size-adjust: 100%;
+            scroll-behavior: smooth;
+        }
+
+        body {
+            min-height: 100vh;
+            min-height: 100dvh;
+            background: var(--bg-deep);
+            color: var(--text);
+            font-family: var(--font);
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            font-size: 15px;
+            line-height: 1.75;
+            overflow-x: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            padding: 24px;
+        }
+
+        /* ===== Ambient Background ===== */
+        body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            background:
+                radial-gradient(ellipse 90% 70% at 5% -5%, rgba(124, 58, 237, 0.15), transparent 55%),
+                radial-gradient(ellipse 70% 60% at 95% 105%, rgba(236, 72, 153, 0.09), transparent 55%),
+                radial-gradient(ellipse 55% 55% at 50% 50%, rgba(6, 182, 212, 0.05), transparent 65%);
+        }
+
+        /* Mesh Gradient Orbs */
+        .orb {
+            position: fixed;
+            border-radius: 50%;
+            filter: blur(110px);
+            opacity: 0.35;
+            pointer-events: none;
+            z-index: 0;
+            animation: orbFloat 28s ease-in-out infinite;
+        }
+
+        .orb-1 {
+            width: 450px;
+            height: 450px;
+            background: var(--primary);
+            top: -18%;
+            right: -12%;
+            animation-delay: 0s;
+        }
+
+        .orb-2 {
+            width: 400px;
+            height: 400px;
+            background: var(--accent-pink);
+            bottom: -18%;
+            left: -12%;
+            animation-delay: -10s;
+        }
+
+        .orb-3 {
+            width: 300px;
+            height: 300px;
+            background: var(--accent-cyan);
+            top: 45%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            animation-delay: -20s;
+            opacity: 0.18;
+        }
+
+        @keyframes orbFloat {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            25% { transform: translate(25px, -30px) scale(1.06); }
+            50% { transform: translate(-20px, 20px) scale(0.94); }
+            75% { transform: translate(15px, 25px) scale(1.03); }
+        }
+
+        /* Subtle Grid */
+        .grid-pattern {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            background-image:
+                linear-gradient(rgba(139, 92, 246, 0.025) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(139, 92, 246, 0.025) 1px, transparent 1px);
+            background-size: 80px 80px;
+            mask-image: radial-gradient(ellipse 75% 75% at 50% 50%, black 20%, transparent 75%);
+            -webkit-mask-image: radial-gradient(ellipse 75% 75% at 50% 50%, black 20%, transparent 75%);
+        }
+
+        /* Noise texture overlay */
+        .noise-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 1;
+            pointer-events: none;
+            opacity: 0.02;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+        }
+
+        /* ===== Main Container ===== */
+        .callback-container {
+            position: relative;
+            z-index: 10;
+            width: 100%;
+            max-width: 520px;
+            animation: cardEntrance 1s cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+
+        @keyframes cardEntrance {
+            0% {
+                opacity: 0;
+                transform: translateY(50px) scale(0.9);
+                filter: blur(5px);
+            }
+            100% {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+                filter: blur(0);
+            }
+        }
+
+        /* ===== Card ===== */
+        .callback-card {
+            border-radius: var(--r-xl);
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow-xl), var(--shadow-glow);
+            overflow: hidden;
+            position: relative;
+            backdrop-filter: blur(24px) saturate(1.6);
+            -webkit-backdrop-filter: blur(24px) saturate(1.6);
+        }
+
+        /* Animated Gradient Border */
+        .callback-card::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            border-radius: var(--r-xl);
+            padding: 1.5px;
+            background: linear-gradient(
+                135deg,
+                var(--primary) 0%,
+                var(--accent-pink) 25%,
+                var(--accent-cyan) 50%,
+                var(--primary) 75%,
+                var(--accent-pink) 100%
+            );
+            background-size: 400% 400%;
+            animation: borderShift 8s ease-in-out infinite;
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            pointer-events: none;
+            opacity: 0.6;
+        }
+
+        @keyframes borderShift {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+
+        /* Top Accent Line */
+        .card-accent-line {
+            height: 4px;
+            background: linear-gradient(90deg, var(--primary), var(--accent-pink), var(--accent-cyan), var(--primary));
+            background-size: 300% 100%;
+            animation: accentSlide 4s ease-in-out infinite;
+            border-radius: 4px 4px 0 0;
+        }
+
+        @keyframes accentSlide {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+
+        .card-inner {
+            padding: 52px 40px;
+            position: relative;
+            z-index: 1;
+            text-align: center;
+        }
+
+        /* ===== Logo Section ===== */
+        .logo-section {
+            margin-bottom: 40px;
+            animation: logoReveal 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both;
+        }
+
+        @keyframes logoReveal {
+            from { opacity: 0; transform: scale(0.6) translateY(12px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+
+        .logo-wrapper {
+            width: 90px;
+            height: 90px;
+            border-radius: 28px;
+            margin: 0 auto 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, var(--primary), var(--accent-pink));
+            box-shadow: 0 14px 44px var(--primary-glow);
+            position: relative;
+            overflow: hidden;
+            transition: transform var(--tr);
+        }
+
+        .logo-wrapper:hover {
+            transform: scale(1.08) rotate(3deg);
+        }
+
+        .logo-wrapper::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, transparent 35%, rgba(255,255,255,0.2) 50%, transparent 65%);
+            animation: shimmerEffect 3.5s ease-in-out infinite;
+        }
+
+        @keyframes shimmerEffect {
+            0%, 100% { transform: translateX(-100%) translateY(-100%); }
+            50% { transform: translateX(100%) translateY(100%); }
+        }
+
+        .logo-wrapper img {
+            width: 50px;
+            height: 50px;
+            object-fit: contain;
+            position: relative;
+            z-index: 1;
+        }
+
+        .logo-title {
+            font-size: 1.3rem;
+            font-weight: 900;
+            background: linear-gradient(135deg, var(--primary-bright), #f0abfc, var(--accent-cyan));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+        }
+
+        /* ===== Status Pill ===== */
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 9px 20px;
+            border-radius: 999px;
+            font-size: 0.82rem;
+            font-weight: 800;
+            margin-bottom: 28px;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            transition: all var(--tr);
+            animation: pillFadeIn 0.5s ease-out 0.4s both;
+        }
+
+        @keyframes pillFadeIn {
+            from { opacity: 0; transform: translateY(-8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .status-pill.processing {
+            background: rgba(139, 92, 246, 0.14);
+            border: 1px solid rgba(139, 92, 246, 0.28);
+            color: var(--primary-bright);
+        }
+
+        .status-pill.success {
+            background: var(--ok-bg);
+            border: 1px solid var(--ok-border);
+            color: #6ee7b7;
+        }
+
+        .status-pill.failure {
+            background: var(--danger-bg);
+            border: 1px solid var(--danger-border);
+            color: #fca5a5;
+        }
+
+        .status-pill i {
+            transition: all 0.3s ease;
+        }
+
+        /* ===== Status Icon ===== */
+        .status-icon-container {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            margin: 0 auto 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+            animation: iconFadeIn 0.6s ease-out 0.5s both;
+        }
+
+        @keyframes iconFadeIn {
+            from { opacity: 0; transform: scale(0.7); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        .status-icon-container.processing {
+            background: rgba(139, 92, 246, 0.1);
+            border: 2px solid var(--border-hover);
+        }
+
+        .status-icon-container.success {
+            background: var(--ok-bg);
+            border: 2px solid var(--ok-border);
+            animation: successPop 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .status-icon-container.failure {
+            background: var(--danger-bg);
+            border: 2px solid var(--danger-border);
+            animation: failShake 0.7s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+        }
+
+        @keyframes successPop {
+            0% { transform: scale(0); opacity: 0; }
+            60% { transform: scale(1.18); }
+            80% { transform: scale(0.92); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        @keyframes failShake {
+            0%, 100% { transform: translateX(0); }
+            15%, 45%, 75% { transform: translateX(-7px); }
+            30%, 60%, 90% { transform: translateX(7px); }
+        }
+
+        /* Lucide Icon Styles */
+        .status-icon-container .lucide-icon {
+            width: 58px;
+            height: 58px;
+            transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .status-icon-container.processing .lucide-icon {
+            color: var(--primary-bright);
+            animation: lucideRotate 1.2s linear infinite;
+        }
+
+        .status-icon-container.success .lucide-icon {
+            color: var(--ok);
+            opacity: 0;
+            transform: scale(0.5);
+            animation: iconAppear 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.2s forwards;
+        }
+
+        .status-icon-container.failure .lucide-icon {
+            color: var(--danger);
+            opacity: 0;
+            transform: scale(0.5);
+            animation: iconAppear 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.2s forwards;
+        }
+
+        @keyframes iconAppear {
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        @keyframes lucideRotate {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Ripple Effect */
+        .status-icon-container.success::after {
+            content: "";
+            position: absolute;
+            inset: -8px;
+            border-radius: 50%;
+            border: 2px solid var(--ok);
+            opacity: 0;
+            animation: ripple 1.5s ease-out 0.3s;
+        }
+
+        @keyframes ripple {
+            0% { transform: scale(0.8); opacity: 0.6; }
+            100% { transform: scale(1.4); opacity: 0; }
+        }
+
+        /* ===== Text Content ===== */
+        .status-title {
+            font-size: 1.45rem;
+            font-weight: 900;
+            color: #fff;
+            margin-bottom: 14px;
+            transition: all 0.4s ease;
+            line-height: 1.6;
+            animation: titleSlideUp 0.6s ease-out 0.6s both;
+        }
+
+        @keyframes titleSlideUp {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .status-desc {
+            font-size: 0.92rem;
+            color: var(--text-muted);
+            line-height: 2.1;
+            margin-bottom: 36px;
+            max-width: 400px;
+            margin-left: auto;
+            margin-right: auto;
+            animation: descFadeIn 0.6s ease-out 0.7s both;
+        }
+
+        @keyframes descFadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        /* ===== Payment Info Card ===== */
+        .payment-info {
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+            margin-bottom: 36px;
+            border-radius: var(--r-lg);
+            background: var(--glass);
+            border: 1px solid var(--border);
+            overflow: hidden;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            animation: infoSlideUp 0.7s ease-out 0.8s both;
+        }
+
+        @keyframes infoSlideUp {
+            from { opacity: 0; transform: translateY(16px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .info-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+            padding: 18px 22px;
+            transition: background var(--tr);
+        }
+
+        .info-row:not(:last-child) {
+            border-bottom: 1px solid var(--border);
+        }
+
+        .info-row:hover {
+            background: var(--glass-hover);
+        }
+
+        .info-row .label {
+            font-size: 0.86rem;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 600;
+        }
+
+        .info-row .label i {
+            opacity: 0.75;
+            color: var(--primary-bright);
+        }
+
+        .info-row .value {
+            font-size: 0.92rem;
+            font-weight: 800;
+            color: #fff;
+            text-align: left;
+            direction: ltr;
+            letter-spacing: 0.02em;
+        }
+
+        /* ===== Action Buttons ===== */
+        .action-section {
+            display: flex;
+            flex-direction: column;
+            gap: 13px;
+            margin-top: 10px;
+            animation: actionFadeIn 0.6s ease-out 0.9s both;
+        }
+
+        @keyframes actionFadeIn {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .action-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            padding: 17px 34px;
+            border-radius: var(--r-md);
+            color: #fff;
+            font-weight: 800;
+            font-size: 0.98rem;
+            line-height: 1;
+            cursor: pointer;
+            border: none;
+            text-decoration: none;
+            transition: all var(--tr);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .action-btn.primary {
+            background: linear-gradient(135deg, var(--primary), var(--accent-pink));
+            box-shadow: 0 10px 28px var(--primary-glow);
+        }
+
+        .action-btn.primary::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, var(--primary-light), var(--accent-pink));
+            opacity: 0;
+            transition: opacity var(--tr);
+        }
+
+        .action-btn.primary:hover {
+            box-shadow: 0 14px 40px var(--primary-glow);
+            transform: translateY(-3px);
+        }
+
+        .action-btn.primary:hover::before {
+            opacity: 1;
+        }
+
+        .action-btn.primary:active {
+            transform: translateY(-1px);
+            box-shadow: 0 5px 18px var(--primary-glow);
+        }
+
+        .action-btn.primary span,
+        .action-btn.primary i {
+            position: relative;
+            z-index: 1;
+        }
+
+        .action-btn.secondary {
+            background: var(--glass);
+            border: 1px solid var(--border-hover);
+            color: var(--text);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+
+        .action-btn.secondary:hover {
+            background: var(--glass-hover);
+            border-color: var(--primary-bright);
+            transform: translateY(-2px);
+            box-shadow: 0 7px 22px rgba(0, 0, 0, 0.25);
+        }
+
+        .action-btn.secondary:active {
+            transform: translateY(0);
+        }
+
+        .action-btn.danger {
+            background: linear-gradient(135deg, #dc2626, #b91c1c);
+            box-shadow: 0 10px 28px rgba(220, 38, 38, 0.35);
+        }
+
+        .action-btn.danger:hover {
+            box-shadow: 0 14px 40px rgba(220, 38, 38, 0.45);
+            transform: translateY(-3px);
+        }
+
+        /* ===== Progress Bar ===== */
+        .progress-bar {
+            width: 100%;
+            height: 4px;
+            background: var(--border);
+            border-radius: 5px;
+            margin-top: 32px;
+            overflow: hidden;
+            opacity: 0.85;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), var(--accent-pink), var(--accent-cyan), var(--primary));
+            background-size: 300% 100%;
+            border-radius: 5px;
+            width: 0%;
+            transition: width 0.5s ease;
+            animation: progressGradient 2.5s linear infinite;
+        }
+
+        @keyframes progressGradient {
+            0% { background-position: 0% 50%; }
+            100% { background-position: 300% 50%; }
+        }
+
+        .progress-fill.complete {
+            animation: none;
+            background: linear-gradient(90deg, var(--ok), #34d399);
+        }
+
+        .progress-fill.failed {
+            background: linear-gradient(90deg, var(--danger), #f87171);
+            animation: none;
+        }
+
+        /* ===== Skeleton Loading ===== */
+        .skeleton {
+            background: linear-gradient(90deg, var(--glass) 25%, var(--glass-hover) 50%, var(--glass) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.8s infinite;
+            border-radius: 7px;
+            height: 20px;
+            width: 95px;
+        }
+
+        @keyframes shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
+        /* ===== Confetti ===== */
+        .confetti-container {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 100;
+            overflow: hidden;
+        }
+
+        .confetti-piece {
+            position: absolute;
+            top: -20px;
+            animation: confettiFall linear forwards;
+        }
+
+        @keyframes confettiFall {
+            0% {
+                transform: translateY(0) rotate(0deg) scale(1);
+                opacity: 1;
+            }
+            80% {
+                opacity: 1;
+            }
+            100% {
+                transform: translateY(100vh) rotate(1440deg) scale(0.2);
+                opacity: 0;
+            }
+        }
+
+        /* ===== Dot Animation ===== */
+        .dot-animation::after {
+            content: '';
+            display: inline-block;
+            width: 1.5em;
+            text-align: left;
+            animation: dots 1.5s steps(4, end) infinite;
+        }
+
+        @keyframes dots {
+            0% { content: ''; }
+            25% { content: '.'; }
+            50% { content: '..'; }
+            75% { content: '...'; }
+        }
+
+        /* ===== Hidden ===== */
+        [hidden] {
+            display: none !important;
+        }
+
+        /* ===== Success Glow Effect ===== */
+        .success-glow {
+            position: absolute;
+            inset: -60%;
+            background: radial-gradient(circle, rgba(16, 185, 129, 0.15) 0%, transparent 65%);
+            border-radius: 50%;
+            animation: glowPulse 2.2s ease-out forwards;
+            pointer-events: none;
+        }
+
+        @keyframes glowPulse {
+            0% { transform: scale(0); opacity: 0; }
+            50% { opacity: 1; }
+            100% { transform: scale(1); opacity: 0; }
+        }
+
+        /* ===== Responsive Design ===== */
+        @media (max-width: 600px) {
+            body {
+                padding: 14px;
+                font-size: 14px;
+                align-items: flex-start;
+                padding-top: 44px;
+            }
+
+            .callback-card {
+                border-radius: var(--r-lg);
+            }
+
+            .card-inner {
+                padding: 40px 26px;
+            }
+
+            .logo-wrapper {
+                width: 76px;
+                height: 76px;
+                border-radius: 22px;
+            }
+
+            .logo-wrapper img {
+                width: 42px;
+                height: 42px;
+            }
+
+            .logo-title {
+                font-size: 1.1rem;
+            }
+
+            .status-icon-container {
+                width: 100px;
+                height: 100px;
+                margin-bottom: 28px;
+            }
+
+            .status-icon-container .lucide-icon {
+                width: 48px;
+                height: 48px;
+            }
+
+            .status-title {
+                font-size: 1.2rem;
+            }
+
+            .status-desc {
+                font-size: 0.86rem;
+                margin-bottom: 26px;
+            }
+
+            .info-row {
+                padding: 15px 18px;
+            }
+
+            .info-row .label {
+                font-size: 0.8rem;
+            }
+
+            .info-row .value {
+                font-size: 0.85rem;
+            }
+
+            .action-btn {
+                padding: 15px 26px;
+                font-size: 0.92rem;
+            }
+
+            .orb-1 { width: 300px; height: 300px; }
+            .orb-2 { width: 260px; height: 260px; }
+            .orb-3 { width: 200px; height: 200px; }
+        }
+
+        @media (max-width: 380px) {
+            .card-inner {
+                padding: 32px 20px;
+            }
+
+            .logo-wrapper {
+                width: 66px;
+                height: 66px;
+                border-radius: 18px;
+            }
+
+            .status-title {
+                font-size: 1.08rem;
+            }
+
+            .action-btn {
+                padding: 14px 22px;
+                font-size: 0.87rem;
+            }
+        }
+
+        @media (min-width: 768px) {
+            .card-inner {
+                padding: 60px 52px;
+            }
+        }
+
+        /* ===== Hover states for desktop ===== */
+        @media (hover: hover) {
+            .payment-info:hover .info-row:not(:last-child) {
+                border-bottom-color: var(--border-hover);
+            }
+        }
+
+        /* ===== Reduced Motion ===== */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+
+        /* ===== Dark mode scrollbar ===== */
+        ::-webkit-scrollbar {
+            width: 7px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-deep);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--primary-dim);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--primary);
+        }
+    </style>
+</head>
+<body>
+    <!-- Ambient Background -->
+    <div class="grid-pattern"></div>
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+    <div class="noise-overlay"></div>
+    <div class="confetti-container" id="confetti"></div>
+
+    <!-- Main Content -->
+    <div class="callback-container">
+        <div class="callback-card">
+            <div class="card-accent-line"></div>
+            <div class="card-inner">
+                <!-- Logo -->
+                <div class="logo-section">
+                    <div class="logo-wrapper">
+                        <img src="https://twomanga.top/favicon.webp" alt="TwoManga" onerror="this.style.display='none'; this.parentElement.innerHTML='<span style=&quot;font-size:36px; position:relative; z-index:1&quot;>📚</span>'">
+                    </div>
+                    <div class="logo-title">TWOMANGA</div>
+                </div>
+
+                <!-- Status Pill -->
+                <div class="status-pill processing" id="statusPill">
+                    <i data-lucide="loader-2" style="width:15px;height:15px"></i>
+                    <span id="pillText">در حال پردازش</span>
+                </div>
+
+                <!-- Status Icon with Lucide Icons -->
+                <div class="status-icon-container processing" id="statusIcon">
+                    <i data-lucide="loader-2" class="lucide-icon" id="processingIcon"></i>
+                    <i data-lucide="check-circle-2" class="lucide-icon" id="successIcon" hidden></i>
+                    <i data-lucide="x-circle" class="lucide-icon" id="failureIcon" hidden></i>
+                </div>
+
+                <!-- Title -->
+                <h2 class="status-title" id="statusTitle">
+                    در حال بررسی پرداخت<span class="dot-animation"></span>
+                </h2>
+
+                <!-- Description -->
+                <p class="status-desc" id="statusDesc">
+                    لطفاً صبر کنید، اطلاعات پرداخت شما در حال تایید است.
+                </p>
+
+                <!-- Payment Info -->
+                <div class="payment-info" id="paymentInfo">
+                    <div class="info-row">
+                        <span class="label">
+                            <i data-lucide="hash" style="width:16px;height:16px"></i>
+                            شناسه پیگیری
+                        </span>
+                        <span class="value" id="trackIdValue">
+                            <span class="skeleton"></span>
+                        </span>
+                    </div>
+                    <div class="info-row">
+                        <span class="label">
+                            <i data-lucide="circle-check" style="width:16px;height:16px"></i>
+                            وضعیت
+                        </span>
+                        <span class="value" id="statusValue">
+                            <span class="skeleton"></span>
+                        </span>
+                    </div>
+                    <div class="info-row" id="amountRow" hidden>
+                        <span class="label">
+                            <i data-lucide="banknote" style="width:16px;height:16px"></i>
+                            جزئیات اشتراک
+                        </span>
+                        <span class="value" id="amountValue"></span>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="action-section" id="actionSection" hidden>
+                    <a href="https://twomanga.top/panel" class="action-btn primary" id="panelBtn">
+                        <i data-lucide="layout-dashboard" style="width:21px;height:21px"></i>
+                        <span>ورود به پنل کاربری</span>
+                    </a>
+                    <a href="https://twomanga.top" class="action-btn secondary" id="homeBtn">
+                        <i data-lucide="home" style="width:19px;height:19px"></i>
+                        <span>بازگشت به صفحه اصلی</span>
+                    </a>
+                </div>
+
+                <!-- Retry Button (shown on failure) -->
+                <div class="action-section" id="retrySection" hidden>
+                    <a href="https://twomanga.top/panel" class="action-btn primary" id="retryPanelBtn">
+                        <i data-lucide="layout-dashboard" style="width:21px;height:21px"></i>
+                        <span>ورود به پنل و تلاش مجدد</span>
+                    </a>
+                    <a href="https://twomanga.top" class="action-btn secondary">
+                        <i data-lucide="arrow-right" style="width:19px;height:19px"></i>
+                        <span>بازگشت به صفحه اصلی</span>
+                    </a>
+                </div>
+
+                <!-- Progress Bar -->
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ===== Configuration =====
+        const BACKEND_URL = 'https://ser.twomanga.top';
+        const REDIRECT_URL = 'https://twomanga.top/panel';
+
+        // ===== State =====
+        let state = 'processing';
+
+        // ===== DOM Elements =====
+        const statusPill = document.getElementById('statusPill');
+        const pillText = document.getElementById('pillText');
+        const statusIcon = document.getElementById('statusIcon');
+        const processingIcon = document.getElementById('processingIcon');
+        const successIcon = document.getElementById('successIcon');
+        const failureIcon = document.getElementById('failureIcon');
+        const statusTitle = document.getElementById('statusTitle');
+        const statusDesc = document.getElementById('statusDesc');
+        const trackIdValue = document.getElementById('trackIdValue');
+        const statusValue = document.getElementById('statusValue');
+        const amountRow = document.getElementById('amountRow');
+        const amountValue = document.getElementById('amountValue');
+        const actionSection = document.getElementById('actionSection');
+        const retrySection = document.getElementById('retrySection');
+        const progressFill = document.getElementById('progressFill');
+
+        // ===== Initialize =====
+        function init() {
+            lucide.createIcons();
+            
+            const params = new URLSearchParams(window.location.search);
+            const trackId = params.get('trackId') || params.get('track_id') || '';
+            const success = params.get('success');
+            
+            if (trackId) {
+                trackIdValue.textContent = trackId;
+            } else {
+                trackIdValue.textContent = '—';
+            }
+
+            // Simulate progress
+            simulateProgress();
+
+            if (success === '1') {
+                verifyPayment(trackId);
+            } else if (success === '0') {
+                showFailure('پرداخت ناموفق بود یا لغو شده است.');
+            } else {
+                if (trackId) {
+                    verifyPayment(trackId);
+                } else {
+                    showFailure('شناسه پیگیری یافت نشد. لطفاً با پشتیبانی تماس بگیرید.');
+                }
+            }
+        }
+
+        // ===== Simulate Progress =====
+        function simulateProgress() {
+            let progress = 0;
+            const interval = setInterval(() => {
+                if (state !== 'processing') {
+                    clearInterval(interval);
+                    return;
+                }
+                progress += Math.random() * 13 + 4;
+                if (progress > 87) progress = 87;
+                progressFill.style.width = progress + '%';
+            }, 420);
+        }
+
+        // ===== Verify Payment =====
+        async function verifyPayment(trackId) {
+            try {
+                const response = await fetch(`${BACKEND_URL}/payment/callback?trackId=${encodeURIComponent(trackId)}`, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showSuccess(data);
+                } else {
+                    showFailure(data.msg || data.detail || 'خطا در پردازش پرداخت');
+                }
+            } catch (error) {
+                console.error('Verification error:', error);
+                showSuccess({ msg: 'پرداخت در حال پردازش است. اشتراک شما به زودی فعال می‌شود.' });
+            }
+        }
+
+        // ===== Show Success =====
+        function showSuccess(data) {
+            state = 'success';
+            
+            // Update pill
+            statusPill.className = 'status-pill success';
+            statusPill.innerHTML = `<i data-lucide="check-circle-2" style="width:15px;height:15px"></i><span>پرداخت موفق</span>`;
+            lucide.createIcons();
+
+            // Update icon - hide processing, show success with Lucide icon
+            statusIcon.className = 'status-icon-container success';
+            processingIcon.style.display = 'none';
+            successIcon.hidden = false;
+            failureIcon.hidden = true;
+            lucide.createIcons();
+
+            // Add success glow
+            const glow = document.createElement('div');
+            glow.className = 'success-glow';
+            statusIcon.appendChild(glow);
+            setTimeout(() => glow.remove(), 2200);
+
+            // Update text
+            statusTitle.textContent = 'پرداخت با موفقیت انجام شد! 🎉';
+            statusDesc.textContent = data.msg || 'اشتراک شما فعال شد. از خرید شما متشکریم!';
+
+            // Update info
+            statusValue.textContent = '✓ تایید شده';
+            statusValue.style.color = '#6ee7b7';
+            progressFill.style.width = '100%';
+            progressFill.classList.add('complete');
+
+            // Show amount if available
+            if (data.plan || data.days || data.coins_added) {
+                amountRow.hidden = false;
+                if (data.coins_added) {
+                    amountValue.textContent = `${data.coins_added} سکه`;
+                } else if (data.plan) {
+                    amountValue.textContent = `${data.plan} • ${data.days} روز`;
+                }
+            }
+
+            // Show confetti
+            createConfetti();
+
+            // Show action buttons
+            actionSection.hidden = false;
+            lucide.createIcons();
+        }
+
+        // ===== Show Failure =====
+        function showFailure(message) {
+            state = 'failure';
+            
+            // Update pill
+            statusPill.className = 'status-pill failure';
+            statusPill.innerHTML = `<i data-lucide="x-circle" style="width:15px;height:15px"></i><span>پرداخت ناموفق</span>`;
+            lucide.createIcons();
+
+            // Update icon - hide processing, show failure with Lucide icon
+            statusIcon.className = 'status-icon-container failure';
+            processingIcon.style.display = 'none';
+            failureIcon.hidden = false;
+            successIcon.hidden = true;
+            lucide.createIcons();
+
+            // Update text
+            statusTitle.textContent = 'پرداخت انجام نشد';
+            statusDesc.textContent = message || 'متاسفانه پرداخت شما تایید نشد. لطفاً مجدداً تلاش کنید.';
+
+            // Update info
+            statusValue.textContent = '✗ ناموفق';
+            statusValue.style.color = '#fca5a5';
+            progressFill.style.width = '100%';
+            progressFill.classList.add('failed');
+
+            // Show retry buttons
+            retrySection.hidden = false;
+            lucide.createIcons();
+        }
+
+        // ===== Create Confetti =====
+        function createConfetti() {
+            const container = document.getElementById('confetti');
+            const colors = ['#7c3aed', '#ec4899', '#a78bfa', '#f0abfc', '#06b6d4', '#fbbf24', '#6ee7b7', '#f472b6'];
+            const shapes = ['square', 'circle', 'triangle'];
+            
+            for (let i = 0; i < 90; i++) {
+                const piece = document.createElement('div');
+                piece.className = 'confetti-piece';
+                
+                const color = colors[Math.floor(Math.random() * colors.length)];
+                const shape = shapes[Math.floor(Math.random() * shapes.length)];
+                const size = Math.random() * 11 + 5;
+                
+                piece.style.left = Math.random() * 100 + '%';
+                piece.style.width = size + 'px';
+                piece.style.height = size + 'px';
+                piece.style.animationDuration = (Math.random() * 2.8 + 2.2) + 's';
+                piece.style.animationDelay = Math.random() * 0.9 + 's';
+                
+                if (shape === 'circle') {
+                    piece.style.backgroundColor = color;
+                    piece.style.borderRadius = '50%';
+                } else if (shape === 'triangle') {
+                    piece.style.width = '0';
+                    piece.style.height = '0';
+                    piece.style.borderLeft = `${size/2}px solid transparent`;
+                    piece.style.borderRight = `${size/2}px solid transparent`;
+                    piece.style.borderBottom = `${size}px solid ${color}`;
+                    piece.style.backgroundColor = 'transparent';
+                } else {
+                    piece.style.backgroundColor = color;
+                    piece.style.borderRadius = '2px';
+                    piece.style.transform = `rotate(${Math.random() * 360}deg)`;
+                }
+                
+                container.appendChild(piece);
+            }
+
+            setTimeout(() => {
+                container.innerHTML = '';
+            }, 5500);
+        }
+
+        // ===== Start =====
+        document.addEventListener('DOMContentLoaded', init);
+        
+        if (document.readyState !== 'loading') {
+            init();
+        }
+    </script>
+</body>
+</html>
